@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "modern-app-backend-template"
+version = "0.1.0"
+description = "Copier template for modern Flask backend applications"
+authors = ["Your Name <your.email@example.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+copier = "^9.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
