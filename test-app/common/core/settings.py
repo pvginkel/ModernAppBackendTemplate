@@ -113,6 +113,7 @@ class CommonSettings(BaseSettings):
         description="Shared secret for authenticating SSE Gateway callbacks"
     )
 
+
     # S3/Ceph storage configuration
     S3_ENDPOINT_URL: str = Field(
         default="http://localhost:9000",
@@ -126,6 +127,7 @@ class CommonSettings(BaseSettings):
     )
     S3_REGION: str = Field(default="us-east-1", description="S3 region")
     S3_USE_SSL: bool = Field(default=False, description="Use SSL for S3 connections")
+
 
     # OIDC Authentication Settings
     OIDC_ENABLED: bool = Field(default=False, description="Enable OIDC authentication")

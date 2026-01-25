@@ -8,7 +8,9 @@ from typing import Any
 from flask import Flask, current_app, jsonify
 from flask.wrappers import Response
 from pydantic import ValidationError
+
 from sqlalchemy.exc import IntegrityError
+
 from werkzeug.exceptions import BadRequest
 
 logger = logging.getLogger(__name__)
@@ -73,6 +75,7 @@ def handle_api_errors(
         try:
             return func(*args, **kwargs)
         except Exception as e:
+
             # Mark session for rollback when any exception is caught
             try:
                 container = current_app.container
@@ -80,6 +83,7 @@ def handle_api_errors(
                 db_session.info["needs_rollback"] = True
             except Exception:
                 pass
+
             # Log all exceptions with stack trace
             logger.error("Exception in %s: %s", func.__name__, str(e), exc_info=True)
 
@@ -137,6 +141,7 @@ def handle_api_errors(
                     code=e.error_code,
                     status_code=400,
                 )
+
             except IntegrityError as e:
                 error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
 
@@ -158,6 +163,7 @@ def handle_api_errors(
                         {"message": "The operation violates a database constraint"},
                         status_code=400,
                     )
+
             except Exception as e:
                 return _build_error_response(
                     "Internal server error",

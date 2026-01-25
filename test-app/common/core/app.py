@@ -38,6 +38,7 @@ def create_app(
         settings = get_settings()
 
     app.config.from_object(settings)
+
     # Initialize Flask-SQLAlchemy
     from common.database.extensions import db
     db.init_app(app)
@@ -55,6 +56,7 @@ def create_app(
             autoflush=True,
             expire_on_commit=False,
         )
+
     # Initialize SpecTree for OpenAPI docs
     # App should call configure_spectree with its own title/description
     from app import configure_app_spectree
@@ -63,7 +65,9 @@ def create_app(
     # Initialize service container
     container = container_class()
     container.config.override(settings)
+
     container.session_maker.override(SessionLocal)
+
     # Wire container with app's API modules
     from app import get_wire_modules
     wire_modules = get_wire_modules()
@@ -85,12 +89,15 @@ def create_app(
     # Register metrics blueprint
     from common.metrics.routes import metrics_bp
     app.register_blueprint(metrics_bp)
+
     # Register SSE callback blueprint
     from common.sse.routes import sse_bp
     app.register_blueprint(sse_bp)
+
     # Register app's API blueprints
     from app.api import api_bp
     app.register_blueprint(api_bp)
+
     # Request teardown handler for database session management
     @app.teardown_request
     def close_session(exc: Exception | None) -> None:
@@ -109,6 +116,7 @@ def create_app(
 
         finally:
             container.db_session.reset()
+
     # Start background services
     if not skip_background_services:
         # Initialize metrics service background updater
@@ -118,10 +126,12 @@ def create_app(
             app.logger.info("Prometheus metrics collection started")
         except Exception as e:
             app.logger.warning(f"Failed to start metrics collection: {e}")
+
         # Ensure S3 bucket exists
         try:
             s3_service = container.s3_service()
             s3_service.ensure_bucket_exists()
         except Exception as e:
             app.logger.warning(f"Failed to ensure S3 bucket exists: {e}")
+
     return app

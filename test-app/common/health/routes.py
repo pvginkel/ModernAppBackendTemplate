@@ -7,9 +7,13 @@ from dependency_injector.wiring import Provide, inject
 from flask import Blueprint, jsonify
 
 from common.core.shutdown import ShutdownCoordinatorProtocol
+
 from common.database.health import check_db_connection
+
+
 from common.storage.health import check_s3_health
 from common.storage.s3_service import S3Service
+
 logger = logging.getLogger(__name__)
 
 health_bp = Blueprint("health", __name__, url_prefix="/health")
@@ -29,7 +33,9 @@ def healthz() -> Any:
 @inject
 def readyz(
     shutdown_coordinator: ShutdownCoordinatorProtocol = Provide["shutdown_coordinator"],
+
     s3_service: S3Service = Provide["s3_service"],
+
 ) -> Any:
     """Readiness probe endpoint for Kubernetes.
 
@@ -42,16 +48,20 @@ def readyz(
     # Check if shutdown has been initiated
     if shutdown_coordinator.is_shutting_down():
         return jsonify({"status": "shutting down", "ready": False}), 503
+
     # Check database connectivity
     db_connected = check_db_connection()
     checks["database"] = {"connected": db_connected}
     if not db_connected:
         all_healthy = False
+
+
     # Check S3 connectivity
     s3_healthy, s3_message = check_s3_health(s3_service)
     checks["s3"] = {"healthy": s3_healthy, "message": s3_message}
     if not s3_healthy:
         all_healthy = False
+
     if not all_healthy:
         return jsonify({
             "status": "unhealthy",

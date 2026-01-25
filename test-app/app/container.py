@@ -13,9 +13,15 @@ class AppContainer(CommonContainer):
     - shutdown_coordinator
     - metrics_service
     - task_service
+
     - db_session
+
+
     - s3_service
+
+
     - connection_manager
+
 
     Example:
         from app.services.my_service import MyService

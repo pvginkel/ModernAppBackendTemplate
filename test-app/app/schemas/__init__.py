@@ -1,1 +1,1 @@
-"""Pydantic schemas for API request/response models."""
+"""Pydantic schemas for request/response validation."""

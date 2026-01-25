@@ -21,7 +21,9 @@ def get_wire_modules() -> list[str]:
         "app.api",
         "common.health.routes",
         "common.metrics.routes",
+
         "common.sse.routes",
+
         # Add your API modules here as you create them
         # "app.api.your_module",
     ]
