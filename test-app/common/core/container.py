@@ -8,6 +8,7 @@ from common.core.settings import CommonSettings
 from common.core.shutdown import ShutdownCoordinator
 from common.metrics.service import MetricsService
 from common.tasks.service import TaskService
+from common.tasks.protocols import NullBroadcaster
 
 from common.sse.connection_manager import ConnectionManager
 
@@ -16,6 +17,7 @@ from common.storage.s3_service import S3Service
 
 
 from common.auth.oidc import OIDCAuthenticator
+from common.auth.oidc_client import OIDCClient
 
 
 
@@ -32,6 +34,9 @@ class CommonContainer(containers.DeclarativeContainer):
 
     # Configuration - must be overridden by app
     config = providers.Dependency(instance_of=CommonSettings)
+
+    # Alias for settings (used by auth routes)
+    settings = providers.Callable(lambda c: c, c=config)
 
     # Database session maker - must be overridden by app
     session_maker = providers.Dependency(instance_of=sessionmaker)
@@ -76,6 +81,12 @@ class CommonContainer(containers.DeclarativeContainer):
     # OIDC authenticator
     oidc_authenticator = providers.Singleton(
         OIDCAuthenticator,
+        settings=config,
+    )
+
+    # OIDC client for token exchange
+    oidc_client = providers.Singleton(
+        OIDCClient,
         settings=config,
     )
 

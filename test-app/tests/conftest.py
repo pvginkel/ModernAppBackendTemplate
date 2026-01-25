@@ -2,16 +2,30 @@
 
 import os
 
+import tempfile
+
+
 import pytest
 from flask import Flask
 from flask.testing import FlaskClient
 
+from unittest.mock import patch
+
+
 # Set testing environment before importing app
 os.environ["FLASK_ENV"] = "testing"
+
+# Use SQLite for testing
+_test_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+os.environ["DATABASE_URL"] = f"sqlite:///{_test_db.name}"
+
 
 from app.config import Settings, get_settings
 from app.container import AppContainer
 from common.core.app import create_app
+
+from common.database.extensions import db
+
 
 
 @pytest.fixture(scope="session")
@@ -19,7 +33,12 @@ def test_settings() -> Settings:
     """Create test settings."""
     # Clear cached settings
     get_settings.cache_clear()
-    return get_settings()
+    settings = get_settings()
+
+    # Configure SQLite-compatible engine options
+    settings.set_engine_options_override({})
+
+    return settings
 
 
 @pytest.fixture
@@ -31,7 +50,18 @@ def app(test_settings: Settings) -> Flask:
         skip_background_services=True,
     )
     app.config["TESTING"] = True
-    return app
+
+
+    # Create tables
+    with app.app_context():
+        db.create_all()
+
+    yield app
+
+    # Cleanup tables
+    with app.app_context():
+        db.drop_all()
+
 
 
 @pytest.fixture
@@ -45,3 +75,12 @@ def app_context(app: Flask):
     """Create application context."""
     with app.app_context():
         yield
+
+
+
+@pytest.fixture(autouse=True)
+def mock_s3_health():
+    """Mock S3 health check for all tests."""
+    with patch("common.storage.health.check_s3_health", return_value=(True, "mocked")):
+        yield
+

@@ -130,6 +130,10 @@ class CommonSettings(BaseSettings):
 {% endif %}
 {% if use_oidc %}
     # OIDC Authentication Settings
+    BASEURL: str = Field(
+        default="http://localhost:5000",
+        description="Application base URL for OIDC callbacks"
+    )
     OIDC_ENABLED: bool = Field(default=False, description="Enable OIDC authentication")
     OIDC_ISSUER_URL: str | None = Field(
         default=None,
@@ -154,6 +158,10 @@ class CommonSettings(BaseSettings):
     OIDC_COOKIE_NAME: str = Field(
         default="access_token",
         description="Cookie name for storing JWT access token"
+    )
+    OIDC_COOKIE_SAMESITE: str = Field(
+        default="Lax",
+        description="SameSite attribute for auth cookies (Strict, Lax, None)"
     )
 {% endif %}
     # Task settings (always available)

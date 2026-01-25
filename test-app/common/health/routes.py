@@ -14,9 +14,18 @@ from common.database.health import check_db_connection
 from common.storage.health import check_s3_health
 from common.storage.s3_service import S3Service
 
+
+from common.auth.routes import register_oidc_routes
+
+
 logger = logging.getLogger(__name__)
 
 health_bp = Blueprint("health", __name__, url_prefix="/health")
+
+
+# Register OIDC auth routes on health blueprint
+register_oidc_routes(health_bp)
+
 
 
 @health_bp.route("/healthz", methods=["GET"])

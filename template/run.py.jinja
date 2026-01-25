@@ -3,5 +3,11 @@
 from common import run
 from app.container import AppContainer
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """Entry point for poetry script."""
     run(AppContainer)
+
+
+if __name__ == "__main__":
+    main()

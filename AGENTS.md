@@ -82,6 +82,79 @@ Set `db_session.info["needs_rollback"] = True` when an error occurs. The teardow
 ### Correlation ID
 Every request gets a correlation ID (from `X-Request-ID` header or generated). Access via `get_request_id()`. All error responses include `request_id`.
 
+## Development Workflow
+
+When developing common modules, follow this workflow to keep template and apps in sync:
+
+### 1. Make Changes in the Right Place
+
+**If fixing a bug or adding a feature to common modules:**
+- Edit the template files in `template/common/`
+- For non-Jinja files (pure Python), these can be directly synced to apps
+
+**If the change is app-specific:**
+- Edit only in the app's directory (e.g., `/work/ZigbeeControl/backend/app/`)
+
+### 2. Regenerate test-app
+
+After any template change:
+```bash
+cd /work/backend
+rm -rf test-app
+copier copy template test-app --trust \
+  -d project_name=test-app \
+  -d project_description="Test application" \
+  -d author_name="Test Author" \
+  -d author_email="test@example.com" \
+  -d use_database=true \
+  -d use_oidc=true \
+  -d use_s3=true \
+  -d use_sse=true
+cd test-app && echo "# Test App" > README.md && poetry install
+```
+
+### 3. Run Template Tests
+
+```bash
+cd /work/backend/test-app
+python -m pytest ../tests/ -v      # Template test suite (107 tests)
+python -m pytest tests/ -v          # Generated app tests
+```
+
+### 4. Sync to Real Apps (if applicable)
+
+For non-Jinja common modules, sync changes to apps like ZigbeeControl:
+```bash
+# Compare files
+diff template/common/auth/oidc.py /work/ZigbeeControl/backend/common/auth/oidc.py
+
+# Copy if needed (for pure Python files only)
+cp template/common/auth/oidc.py /work/ZigbeeControl/backend/common/auth/oidc.py
+```
+
+### 5. Run App Tests
+
+```bash
+cd /work/ZigbeeControl/backend
+python -m pytest tests/ -v
+```
+
+### 6. Verify All Test Suites Pass
+
+Before considering work complete, all three must pass:
+- [ ] Template tests (`/work/backend/tests/`) - 107 tests
+- [ ] Generated test-app tests (`/work/backend/test-app/tests/`) - 2 tests
+- [ ] Real app tests (e.g., `/work/ZigbeeControl/backend/tests/`) - 31 tests
+
+### Quick Reference
+
+| Change Type | Edit Location | Then Do |
+|-------------|---------------|---------|
+| Common module (pure Python) | `template/common/` | Regenerate test-app, sync to apps, run all tests |
+| Common module (Jinja) | `template/common/*.jinja` | Regenerate test-app, manually update apps, run all tests |
+| App-specific code | App's `app/` directory | Run app tests only |
+| Test fixtures | `template/tests/conftest.py.jinja` | Regenerate test-app, run all tests |
+
 ## Reference Apps
 
 These apps use the patterns consolidated in this template:

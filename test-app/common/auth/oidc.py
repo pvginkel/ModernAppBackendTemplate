@@ -258,8 +258,7 @@ class OIDCAuthenticator:
         try:
             claims = self._provider.validate_token(token)  # type: ignore
             return OIDCUser.from_claims(claims)
-        except OIDCTokenError as e:
-            logger.debug("Token validation failed: %s", e)
+        except OIDCTokenError:
             return None
 
     def require_auth(self, f: F) -> F:

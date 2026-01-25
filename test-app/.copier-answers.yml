@@ -1,0 +1,14 @@
+# This file stores the Copier template answers for regeneration.
+# To regenerate: copier copy --answers-file .copier-answers.yml ../template .
+_commit: ~
+_src_path: ../template
+
+project_name: test-app
+project_description: Test application for template validation
+author_name: Test Author
+author_email: test@example.com
+
+use_database: true
+use_oidc: true
+use_s3: true
+use_sse: true
