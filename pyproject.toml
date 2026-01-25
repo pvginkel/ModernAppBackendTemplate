@@ -10,6 +10,8 @@ python = "^3.11"
 
 [tool.poetry.group.dev.dependencies]
 copier = "^9.0.0"
+pytest = "^8.0.0"
+pytest-mock = "^3.12.0"
 
 [build-system]
 requires = ["poetry-core"]
