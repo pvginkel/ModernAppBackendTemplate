@@ -1,0 +1,186 @@
+"""Base settings configuration using Pydantic."""
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class CommonSettings(BaseSettings):
+    """Base settings class with common configuration.
+
+    Apps should extend this class to add their own settings:
+
+        from common.core.settings import CommonSettings
+
+        class Settings(CommonSettings):
+            MY_SETTING: str = Field(default="value")
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
+    # Flask settings
+    SECRET_KEY: str = Field(default="dev-secret-key-change-in-production")
+    FLASK_ENV: str = Field(default="development")
+    DEBUG: bool = Field(default=True)
+
+    # Server settings
+    HOST: str = Field(default="0.0.0.0")
+    PORT: int = Field(default=5000)
+
+    # CORS settings
+    CORS_ORIGINS: list[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed CORS origins"
+    )
+
+    # Graceful shutdown settings
+    GRACEFUL_SHUTDOWN_TIMEOUT: int = Field(
+        default=30,
+        description="Maximum seconds to wait for tasks during shutdown"
+    )
+
+    # Metrics settings
+    METRICS_UPDATE_INTERVAL: int = Field(
+        default=60,
+        description="Metrics background update interval in seconds"
+    )
+{% if use_database %}
+    # Database settings
+    DATABASE_URL: str = Field(
+        default="postgresql+psycopg://postgres:postgres@localhost:5432/{{ project_name | replace('-', '_') }}",
+        description="PostgreSQL connection string",
+    )
+
+    # Database connection pool settings
+    DB_POOL_SIZE: int = Field(
+        default=5,
+        description="Number of persistent connections in the pool"
+    )
+    DB_POOL_MAX_OVERFLOW: int = Field(
+        default=10,
+        description="Max temporary connections above pool_size"
+    )
+    DB_POOL_TIMEOUT: int = Field(
+        default=30,
+        description="Seconds to wait for a connection before timeout"
+    )
+
+    # Internal override for test fixtures (not set via env)
+    _engine_options_override: dict[str, Any] | None = None
+
+    @property
+    def SQLALCHEMY_DATABASE_URI(self) -> str:
+        """SQLAlchemy database URI."""
+        return self.DATABASE_URL
+
+    @property
+    def SQLALCHEMY_TRACK_MODIFICATIONS(self) -> bool:
+        """Disable SQLAlchemy track modifications."""
+        return False
+
+    @property
+    def SQLALCHEMY_ENGINE_OPTIONS(self) -> dict[str, Any]:
+        """SQLAlchemy engine options with connection pool configuration."""
+        if self._engine_options_override is not None:
+            return self._engine_options_override
+        return {
+            "pool_size": self.DB_POOL_SIZE,
+            "max_overflow": self.DB_POOL_MAX_OVERFLOW,
+            "pool_timeout": self.DB_POOL_TIMEOUT,
+            "pool_pre_ping": True,
+        }
+
+    def set_engine_options_override(self, options: dict[str, Any]) -> None:
+        """Override engine options (for test fixtures using SQLite)."""
+        object.__setattr__(self, "_engine_options_override", options)
+{% endif %}
+{% if use_sse %}
+    # SSE Gateway settings
+    SSE_GATEWAY_URL: str = Field(
+        default="http://localhost:3001",
+        description="SSE Gateway base URL for internal send endpoint"
+    )
+    SSE_CALLBACK_SECRET: str = Field(
+        default="",
+        description="Shared secret for authenticating SSE Gateway callbacks"
+    )
+{% endif %}
+{% if use_s3 %}
+    # S3/Ceph storage configuration
+    S3_ENDPOINT_URL: str = Field(
+        default="http://localhost:9000",
+        description="Ceph RGW S3-compatible endpoint"
+    )
+    S3_ACCESS_KEY_ID: str = Field(default="admin", description="S3 access key")
+    S3_SECRET_ACCESS_KEY: str = Field(default="password", description="S3 secret key")
+    S3_BUCKET_NAME: str = Field(
+        default="{{ project_name | replace('-', '_') }}_files",
+        description="S3 bucket for file storage"
+    )
+    S3_REGION: str = Field(default="us-east-1", description="S3 region")
+    S3_USE_SSL: bool = Field(default=False, description="Use SSL for S3 connections")
+{% endif %}
+{% if use_oidc %}
+    # OIDC Authentication Settings
+    OIDC_ENABLED: bool = Field(default=False, description="Enable OIDC authentication")
+    OIDC_ISSUER_URL: str | None = Field(
+        default=None,
+        description="OIDC issuer URL (e.g., https://auth.example.com/realms/app)"
+    )
+    OIDC_CLIENT_ID: str | None = Field(default=None, description="OIDC client ID")
+    OIDC_CLIENT_SECRET: str | None = Field(
+        default=None, description="OIDC client secret"
+    )
+    OIDC_SCOPES: str = Field(
+        default="openid profile email",
+        description="Space-separated OIDC scopes"
+    )
+    OIDC_AUDIENCE: str | None = Field(
+        default=None,
+        description="Expected 'aud' claim in JWT (defaults to client_id)"
+    )
+    OIDC_CLOCK_SKEW_SECONDS: int = Field(
+        default=30,
+        description="Clock skew tolerance for token validation"
+    )
+    OIDC_COOKIE_NAME: str = Field(
+        default="access_token",
+        description="Cookie name for storing JWT access token"
+    )
+{% endif %}
+    # Task settings (always available)
+    TASK_MAX_WORKERS: int = Field(
+        default=4,
+        description="Maximum number of concurrent background tasks"
+    )
+    TASK_TIMEOUT_SECONDS: int = Field(
+        default=300,
+        description="Task execution timeout in seconds"
+    )
+    TASK_CLEANUP_INTERVAL_SECONDS: int = Field(
+        default=600,
+        description="How often to clean up completed tasks in seconds"
+    )
+
+    @property
+    def is_testing(self) -> bool:
+        """Check if running in testing environment."""
+        return self.FLASK_ENV == "testing"
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production mode."""
+        return self.FLASK_ENV == "production" or not self.DEBUG
+
+    @model_validator(mode="after")
+    def configure_environment_defaults(self) -> "CommonSettings":
+        """Apply environment-specific defaults after validation."""
+        return self

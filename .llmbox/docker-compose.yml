@@ -1,0 +1,28 @@
+services:
+  llmbox:
+    image: registry:5000/llmbox:latest
+    network_mode: host
+    pid: host
+    working_dir: /work/backend
+    tty: true
+    user: "${UID}:${GID}"
+    environment:
+      TERM: ${TERM}
+      COLORTERM: ${COLORTERM}
+    volumes:
+      - ${HOME}/.claude.json:/home/ubuntu/.claude.json:rw
+      - ${HOME}/.claude:/home/ubuntu/.claude:rw
+      - ${HOME}/.codex:/home/ubuntu/.codex:rw
+      - ${HOME}/.vimrc:/home/ubuntu/.vimrc:ro
+      - ${HOME}/.gitconfig:/home/ubuntu/.gitconfig:ro
+      - ${HOME}/.cache:/home/ubuntu/.cache:rw
+      - ${HOME}/.happy:/home/ubuntu/.happy:rw
+      - ../backend:/work/backend:rw
+      - ../backend/.git:/work/backend/.git:ro
+      - ../../ElectronicsInventory:/work/ElectronicsInventory:ro
+      - ../../SSEGateway:/work/SSEGateway:ro
+      - ../../IoTSupport:/work/IoTSupport:ro
+      - ../../ZigbeeControl:/work/ZigbeeControl:ro
+      - ../../DHCPApp:/work/DHCPApp:ro
+    # Required for Chromium
+    shm_size: 1G

@@ -1,0 +1,1 @@
+"""SSE Gateway integration module."""

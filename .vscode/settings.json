@@ -1,0 +1,19 @@
+{
+  "spellright.language": ["en"],
+  "spellright.documentTypes": ["markdown", "latex", "plaintext"],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportUnknownMemberType": "information",
+    "reportUnknownVariableType": "information",
+    "reportUnknownArgumentType": "information"
+  },
+  "python.analysis.exclude": ["**/alembic/versions/**"],
+  "python.analysis.ignore": ["**/alembic/versions/**"],
+  "python.linting.mypyEnabled": true,
+  "python.linting.enabled": true,
+  "editor.formatOnSave": false,
+  "[python]": {
+    "editor.formatOnSave": false
+  },
+  "python.REPL.enableREPLSmartSend": false,
+  "idf.pythonInstallPath": "/usr/bin/python3"
+}

@@ -1,0 +1,66 @@
+"""Health check endpoints for Kubernetes probes."""
+
+import logging
+from typing import Any
+
+from dependency_injector.wiring import Provide, inject
+from flask import Blueprint, jsonify
+
+from common.core.shutdown import ShutdownCoordinatorProtocol
+from common.database.health import check_db_connection
+from common.storage.health import check_s3_health
+from common.storage.s3_service import S3Service
+logger = logging.getLogger(__name__)
+
+health_bp = Blueprint("health", __name__, url_prefix="/health")
+
+
+@health_bp.route("/healthz", methods=["GET"])
+def healthz() -> Any:
+    """Liveness probe endpoint for Kubernetes.
+
+    Always returns 200 to indicate the application is alive.
+    This keeps the pod running even during graceful shutdown.
+    """
+    return jsonify({"status": "alive", "ready": True}), 200
+
+
+@health_bp.route("/readyz", methods=["GET"])
+@inject
+def readyz(
+    shutdown_coordinator: ShutdownCoordinatorProtocol = Provide["shutdown_coordinator"],
+    s3_service: S3Service = Provide["s3_service"],
+) -> Any:
+    """Readiness probe endpoint for Kubernetes.
+
+    Returns 503 when the application is shutting down or unhealthy.
+    This signals Kubernetes to remove the pod from service endpoints.
+    """
+    checks: dict[str, Any] = {}
+    all_healthy = True
+
+    # Check if shutdown has been initiated
+    if shutdown_coordinator.is_shutting_down():
+        return jsonify({"status": "shutting down", "ready": False}), 503
+    # Check database connectivity
+    db_connected = check_db_connection()
+    checks["database"] = {"connected": db_connected}
+    if not db_connected:
+        all_healthy = False
+    # Check S3 connectivity
+    s3_healthy, s3_message = check_s3_health(s3_service)
+    checks["s3"] = {"healthy": s3_healthy, "message": s3_message}
+    if not s3_healthy:
+        all_healthy = False
+    if not all_healthy:
+        return jsonify({
+            "status": "unhealthy",
+            "ready": False,
+            **checks,
+        }), 503
+
+    return jsonify({
+        "status": "ready",
+        "ready": True,
+        **checks,
+    }), 200

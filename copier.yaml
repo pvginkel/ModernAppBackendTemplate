@@ -1,0 +1,54 @@
+# Copier configuration for modern-app-backend-template
+_min_copier_version: "9.0.0"
+_subdirectory: template
+
+# Project metadata
+project_name:
+  type: str
+  help: Project name (lowercase, hyphens, e.g., 'my-app-backend')
+  validator: >-
+    {% if not project_name | regex_search('^[a-z][a-z0-9-]*$') %}
+    Project name must be lowercase letters, numbers, and hyphens, starting with a letter
+    {% endif %}
+
+project_description:
+  type: str
+  help: Short description of the project
+  default: A Flask backend application
+
+author_name:
+  type: str
+  help: Author name
+  default: Your Name
+
+author_email:
+  type: str
+  help: Author email
+  default: your.email@example.com
+
+# Feature toggles
+use_database:
+  type: bool
+  default: true
+  help: Include PostgreSQL + Alembic support?
+
+use_oidc:
+  type: bool
+  default: false
+  help: Include OIDC authentication?
+
+use_s3:
+  type: bool
+  default: false
+  help: Include S3/Ceph storage support?
+
+use_sse:
+  type: bool
+  default: false
+  help: Include SSE Gateway integration?
+
+# Derived values
+_project_slug:
+  type: str
+  default: "{{ project_name | replace('-', '_') }}"
+  when: false
