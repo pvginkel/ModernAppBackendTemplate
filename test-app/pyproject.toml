@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "test-app"
 version = "0.1.0"
-description = "A Flask backend application"
-authors = ["Your Name <your.email@example.com>"]
+description = "Test application for template validation"
+authors = ["Template Team <template@example.com>"]
 readme = "README.md"
 packages = [{include = "app"}, {include = "common"}]
 
