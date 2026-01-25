@@ -2,10 +2,11 @@
 
 import functools
 import logging
+import uuid
 from collections.abc import Callable
 from typing import Any
 
-from flask import Flask, current_app, jsonify
+from flask import Flask, current_app, g, jsonify, request
 from flask.wrappers import Response
 from pydantic import ValidationError
 {% if use_database %}
@@ -43,16 +44,33 @@ class InvalidOperationException(BusinessLogicException):
     pass
 
 
+def get_request_id() -> str:
+    """Get the current request ID from flask.g, or generate one if not set."""
+    if hasattr(g, "request_id") and g.request_id:
+        return g.request_id
+    return str(uuid.uuid4())
+
+
+def setup_request_id() -> None:
+    """Set up request ID for the current request.
+
+    Uses X-Request-ID header if provided, otherwise generates a new UUID.
+    Call this in @app.before_request.
+    """
+    g.request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+
+
 def _build_error_response(
     error: str,
     details: dict[str, Any],
     code: str | None = None,
     status_code: int = 400,
 ) -> tuple[Response, int]:
-    """Build error response with optional error code."""
+    """Build error response with request ID for correlation."""
     response_data: dict[str, Any] = {
         "error": error,
         "details": details,
+        "request_id": get_request_id(),
     }
 
     if code:

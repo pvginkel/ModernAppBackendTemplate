@@ -79,8 +79,13 @@ def create_app(
     CORS(app, origins=settings.CORS_ORIGINS)
 
     # Register error handlers
-    from common.core.errors import register_error_handlers
+    from common.core.errors import register_error_handlers, setup_request_id
     register_error_handlers(app)
+
+    # Set up request ID for correlation on each request
+    @app.before_request
+    def before_request() -> None:
+        setup_request_id()
 
     # Register health blueprint
     from common.health.routes import health_bp
