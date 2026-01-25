@@ -1,7 +1,7 @@
-# This file stores the Copier template answers for regeneration.
-# To regenerate: copier copy --answers-file .copier-answers.yml ../template .
+# Copier template answers for test-app
+# To update from template: ./scripts/copier-update.sh
 _commit: ~
-_src_path: ../template
+_src_path: ..
 
 project_name: test-app
 project_description: Test application for template validation

@@ -2,13 +2,20 @@
 _min_copier_version: "9.0.0"
 _subdirectory: template
 
-# Exclude files based on feature flags
-_exclude:
-  - "{% if not use_database %}alembic{% endif %}"
-  - "{% if not use_database %}alembic.ini{% endif %}"
-  - "{% if not use_database %}common/database{% endif %}"
-  - "{% if not use_s3 %}common/storage{% endif %}"
-  - "{% if not use_sse %}common/sse{% endif %}"
+# App-specific files that should only be created initially, not overwritten
+_skip_if_exists:
+  - app/__init__.py
+  - app/config.py
+  - app/container.py
+  - app/api/__init__.py
+  - app/models/__init__.py
+  - tests/conftest.py
+
+# Post-copy cleanup to remove directories based on feature flags
+_tasks:
+  - "{% if not use_database %}rm -rf alembic alembic.ini common/database{% endif %}"
+  - "{% if not use_s3 %}rm -rf common/storage{% endif %}"
+  - "{% if not use_sse %}rm -rf common/sse{% endif %}"
 
 # Project metadata
 project_name:
