@@ -31,4 +31,7 @@ exec poetry run copier copy \
     --skip app/api/__init__.py \
     --skip app/models/__init__.py \
     --skip tests/conftest.py \
+    --skip tests/test_health.py \
+    --skip scripts/args.sh \
+    --skip Jenkinsfile \
     "$SRC_PATH" .

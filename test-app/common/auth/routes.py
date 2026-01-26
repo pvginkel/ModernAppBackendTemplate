@@ -11,6 +11,7 @@ from typing import Any
 from flask import Blueprint, Response, current_app, make_response, redirect, request
 from pydantic import BaseModel, Field
 
+from common.auth.decorators import public
 from common.auth.oidc_client import AuthState
 
 logger = logging.getLogger(__name__)
@@ -86,13 +87,45 @@ def register_oidc_routes(bp: Blueprint) -> None:
     - GET /auth/check - Check authentication status
     - GET /auth/self - Get current user info
 
+    Also registers a before_request hook that requires authentication for all
+    endpoints not marked with the @public decorator.
+
+    Args:
+        bp: The blueprint to register routes on
+
     Requires the Flask app to have a container with:
     - settings() - CommonSettings instance
     - oidc_authenticator() - OIDCAuthenticator instance
     - oidc_client() - OIDCClient instance
     """
+    from http import HTTPStatus
+    from flask import jsonify
+
+    @bp.before_request
+    def _require_authentication():
+        """Check OIDC authentication for protected endpoints."""
+        settings = _get_settings()
+
+        # Skip auth check for public endpoints (marked with @public decorator)
+        if request.endpoint:
+            view_func = current_app.view_functions.get(request.endpoint)
+            if view_func and getattr(view_func, "is_public", False):
+                return None
+
+        # If OIDC disabled, allow all requests
+        if not settings.OIDC_ENABLED:
+            return None
+
+        # Check authentication
+        authenticator = _get_authenticator()
+        user = authenticator.authenticate()
+        if not user:
+            return jsonify({"error": "Authentication required"}), HTTPStatus.UNAUTHORIZED
+
+        return None
 
     @bp.route("/auth/self", methods=["GET"])
+    @public
     def get_current_user() -> tuple[Any, int]:
         """Get current authenticated user info."""
         settings = _get_settings()
@@ -116,6 +149,7 @@ def register_oidc_routes(bp: Blueprint) -> None:
         ).model_dump(), 200
 
     @bp.route("/auth/login", methods=["GET"])
+    @public
     def login() -> Response:
         """Initiate OIDC login flow."""
         settings = _get_settings()
@@ -146,6 +180,7 @@ def register_oidc_routes(bp: Blueprint) -> None:
         return response
 
     @bp.route("/auth/callback", methods=["GET"])
+    @public
     def callback() -> Response:
         """Handle OIDC callback."""
         settings = _get_settings()
@@ -222,6 +257,7 @@ def register_oidc_routes(bp: Blueprint) -> None:
         return response
 
     @bp.route("/auth/logout", methods=["GET"])
+    @public
     def logout() -> Response:
         """Log out and clear cookies."""
         settings = _get_settings()
@@ -255,6 +291,7 @@ def register_oidc_routes(bp: Blueprint) -> None:
         return response
 
     @bp.route("/auth/check", methods=["GET"])
+    @public
     def auth_check() -> tuple[Any, int]:
         """Check if user is authenticated (for frontend)."""
         settings = _get_settings()
