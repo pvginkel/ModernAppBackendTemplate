@@ -3,7 +3,7 @@ services:
     image: registry:5000/llmbox:latest
     network_mode: host
     pid: host
-    working_dir: /work/backend
+    working_dir: /work/ModernAppTemplate/backend
     tty: true
     user: "${UID}:${GID}"
     environment:
@@ -17,17 +17,17 @@ services:
       - ${HOME}/.gitconfig:/home/ubuntu/.gitconfig:ro
       - ${HOME}/.cache:/home/ubuntu/.cache:rw
       - ${HOME}/.happy:/home/ubuntu/.happy:rw
-      - ../backend:/work/backend:rw
-      - ../backend/.git:/work/backend/.git:ro
-      - ../../ElectronicsInventory:/work/ElectronicsInventory:rw
-      - ../../ElectronicsInventory/.git:/work/ElectronicsInventory/.git:ro
-      - ../../SSEGateway:/work/SSEGateway:rw
-      - ../../SSEGateway/.git:/work/SSEGateway/.git:ro
-      - ../../IoTSupport:/work/IoTSupport:rw
-      - ../../IoTSupport/.git:/work/IoTSupport/.git:ro
-      - ../../ZigbeeControl:/work/ZigbeeControl:rw
-      - ../../ZigbeeControl/.git:/work/ZigbeeControl/.git:ro
-      - ../../DHCPApp:/work/DHCPApp:rw
-      - ../../DHCPApp/.git:/work/DHCPApp/.git:ro
+      - ../../ModernAppTemplate/backend:/work/ModernAppTemplate/backend:rw
+      - ../../ModernAppTemplate/backend/.git:/work/ModernAppTemplate/backend/.git:ro
+      - ../../ElectronicsInventory/backend:/work/ElectronicsInventory/backend:rw
+      - ../../ElectronicsInventory/backend/.git:/work/ElectronicsInventory/backend/.git:ro
+      - ../../SSEGateway/backend:/work/SSEGateway/backend:rw
+      - ../../SSEGateway/backend/.git:/work/SSEGateway/backend/.git:ro
+      - ../../IoTSupport/backend:/work/IoTSupport/backend:rw
+      - ../../IoTSupport/backend/.git:/work/IoTSupport/backend/.git:ro
+      - ../../ZigbeeControl/backend:/work/ZigbeeControl/backend:rw
+      - ../../ZigbeeControl/backend/.git:/work/ZigbeeControl/backend/.git:ro
+      - ../../DHCPApp/backend:/work/DHCPApp/backend:rw
+      - ../../DHCPApp/backend/.git:/work/DHCPApp/backend/.git:ro
     # Required for Chromium
     shm_size: 1G
