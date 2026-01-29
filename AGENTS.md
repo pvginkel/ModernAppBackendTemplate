@@ -236,3 +236,9 @@ When template changes are ready to commit:
 3. Provide the user with git commands to run outside the container:
    - Stage both template changes and regenerated test-app
    - Use descriptive commit messages explaining the template change
+
+## Related Documentation
+
+- `docs/change_workflow.md` — Complete workflow for making changes (planning, implementation, verification)
+- `changelog.md` — Change history with migration instructions for downstream apps
+- `copier.yml` — Template configuration and available variables
