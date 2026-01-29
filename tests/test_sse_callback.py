@@ -45,6 +45,10 @@ class TestSSECallbackAPI:
         payload = {
             "action": "disconnect",
             "token": "test-token-123",
+            "reason": "client_closed",
+            "request": {
+                "url": "/api/sse/stream?request_id=abc123",
+            },
         }
 
         response = client.post("/api/sse/callback", json=payload)

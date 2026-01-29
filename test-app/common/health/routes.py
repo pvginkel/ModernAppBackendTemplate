@@ -58,6 +58,7 @@ def readyz(
     if shutdown_coordinator.is_shutting_down():
         return jsonify({"status": "shutting down", "ready": False}), 503
 
+
     # Check database connectivity
     db_connected = check_db_connection()
     checks["database"] = {"connected": db_connected}
@@ -76,11 +77,13 @@ def readyz(
         checks["migrations"] = {"pending": 0}
 
 
+
     # Check S3 connectivity
     s3_healthy, s3_message = check_s3_health(s3_service)
     checks["s3"] = {"healthy": s3_healthy, "message": s3_message}
     if not s3_healthy:
         all_healthy = False
+
 
     if not all_healthy:
         return jsonify({
@@ -94,6 +97,7 @@ def readyz(
         "ready": True,
         **checks,
     }), 200
+
 
 
 @health_bp.route("/drain", methods=["GET"])
@@ -130,3 +134,4 @@ def drain(
     except Exception as e:
         logger.error(f"Error during drain: {e}")
         return jsonify({"status": "error", "ready": False}), 500
+

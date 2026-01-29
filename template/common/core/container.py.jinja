@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from common.core.settings import CommonSettings
 from common.core.shutdown import ShutdownCoordinator
 from common.metrics.service import MetricsService
+from common.metrics.coordinator import MetricsUpdateCoordinator
 from common.tasks.service import TaskService
 from common.tasks.protocols import NullBroadcaster
 {% if use_sse %}
@@ -51,6 +52,12 @@ class CommonContainer(containers.DeclarativeContainer):
     # Metrics service - singleton with background updater
     metrics_service = providers.Singleton(
         MetricsService,
+        shutdown_coordinator=shutdown_coordinator,
+    )
+
+    # Metrics update coordinator - for services with gauge metrics
+    metrics_coordinator = providers.Singleton(
+        MetricsUpdateCoordinator,
         shutdown_coordinator=shutdown_coordinator,
     )
 {% if use_sse %}

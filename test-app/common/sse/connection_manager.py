@@ -21,6 +21,10 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
+from common.sse.schemas import (
+    SSEGatewayEventData,
+    SSEGatewaySendRequest,
+)
 from common.tasks.protocols import BroadcasterProtocol
 
 if TYPE_CHECKING:
@@ -41,7 +45,7 @@ class ConnectionManager(BroadcasterProtocol):
         """Initialize ConnectionManager.
 
         Args:
-            gateway_url: Base URL for SSE Gateway (e.g., "http://localhost:3001")
+            gateway_url: Base URL for SSE Gateway (e.g., "http://localhost:3000")
             metrics_service: Metrics service for observability
             http_timeout: Timeout for HTTP requests to SSE Gateway in seconds
         """
@@ -211,7 +215,16 @@ class ConnectionManager(BroadcasterProtocol):
     def broadcast_task_event(
         self, task_id: str, event_type: str, data: dict[str, Any]
     ) -> bool:
-        """Broadcast a task event to all connections (BroadcasterProtocol)."""
+        """Broadcast a task event to all connections (BroadcasterProtocol).
+
+        Args:
+            task_id: Task identifier
+            event_type: Event type (started, progress, completed, failed)
+            data: Event payload
+
+        Returns:
+            True if sent to at least one connection, False otherwise
+        """
         return self.send_event(None, data, "task_event", "task")
 
     def send_event(
@@ -306,18 +319,22 @@ class ConnectionManager(BroadcasterProtocol):
         start_time = perf_counter()
 
         try:
-            # Format event payload
-            send_request = {
-                "token": token,
-                "event": {"name": event_name, "data": json.dumps(event_data)},
-                "close": False,
-            }
+            # Format event payload using Pydantic models
+            event = SSEGatewayEventData(
+                name=event_name,
+                data=json.dumps(event_data),
+            )
+            send_request = SSEGatewaySendRequest(
+                token=token,
+                event=event,
+                close=False,
+            )
 
             # POST to SSE Gateway
             url = f"{self.gateway_url}/internal/send"
             response = requests.post(
                 url,
-                json=send_request,
+                json=send_request.model_dump(exclude_none=True),
                 timeout=self.http_timeout,
                 headers={"Content-Type": "application/json"},
             )
@@ -383,11 +400,15 @@ class ConnectionManager(BroadcasterProtocol):
             request_id: Request identifier (for logging)
         """
         try:
-            send_request = {"token": token, "event": None, "close": True}
+            send_request = SSEGatewaySendRequest(
+                token=token,
+                event=None,
+                close=True,
+            )
             url = f"{self.gateway_url}/internal/send"
             response = requests.post(
                 url,
-                json=send_request,
+                json=send_request.model_dump(exclude_none=True),
                 timeout=self.http_timeout,
                 headers={"Content-Type": "application/json"},
             )

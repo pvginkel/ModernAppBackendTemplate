@@ -41,6 +41,14 @@ author_email:
   help: Author email
   default: your.email@example.com
 
+workspace_name:
+  type: str
+  help: Workspace folder name (used for container paths, e.g., 'ElectronicsInventory')
+  validator: >-
+    {% if not workspace_name | regex_search('^[A-Za-z][A-Za-z0-9_-]*$') %}
+    Workspace name must be letters, numbers, hyphens, and underscores, starting with a letter
+    {% endif %}
+
 # Feature toggles
 use_database:
   type: bool

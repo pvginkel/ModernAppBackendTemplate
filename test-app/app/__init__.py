@@ -11,7 +11,7 @@ def configure_app_spectree(app: Flask) -> None:
         app,
         title="test-app API",
         version="1.0.0",
-        description="Test application for template validation",
+        description="Test application",
     )
 
 

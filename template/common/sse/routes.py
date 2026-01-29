@@ -5,35 +5,17 @@ from urllib.parse import parse_qs, urlparse
 
 from dependency_injector.wiring import Provide, inject
 from flask import Blueprint, Response, current_app, jsonify, request
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from common.sse.connection_manager import ConnectionManager
+from common.sse.schemas import (
+    SSEGatewayConnectCallback,
+    SSEGatewayDisconnectCallback,
+)
 
 logger = logging.getLogger(__name__)
 
 sse_bp = Blueprint("sse", __name__, url_prefix="/api/sse")
-
-
-class SSEGatewayRequest(BaseModel):
-    """Request details from SSE Gateway callback."""
-
-    url: str
-    method: str
-
-
-class SSEGatewayConnectCallback(BaseModel):
-    """SSE Gateway connect callback payload."""
-
-    action: str
-    token: str
-    request: SSEGatewayRequest
-
-
-class SSEGatewayDisconnectCallback(BaseModel):
-    """SSE Gateway disconnect callback payload."""
-
-    action: str
-    token: str
 
 
 def _authenticate_callback(secret_from_query: str | None) -> bool:
@@ -100,9 +82,7 @@ def handle_callback(
             return jsonify({}), 200
 
         elif action == "disconnect":
-            disconnect_callback = SSEGatewayDisconnectCallback.model_validate(
-                payload
-            )
+            disconnect_callback = SSEGatewayDisconnectCallback.model_validate(payload)
             connection_manager.on_disconnect(disconnect_callback.token)
             return jsonify({}), 200
 

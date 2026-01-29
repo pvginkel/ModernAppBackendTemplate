@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "test-app"
 version = "0.1.0"
-description = "Test application for template validation"
+description = "Test application"
 authors = ["Test Author <test@example.com>"]
 readme = "README.md"
 packages = [{include = "app"}, {include = "common"}]

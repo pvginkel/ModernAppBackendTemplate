@@ -152,7 +152,7 @@ class TestNullBroadcaster:
 
     def test_null_broadcaster_accepts_events(self) -> None:
         """Test NullBroadcaster silently accepts broadcast calls."""
-        from common.sse.null_broadcaster import NullBroadcaster
+        from common.tasks.protocols import NullBroadcaster
 
         broadcaster = NullBroadcaster()
 
