@@ -1,5 +1,6 @@
 """S3-compatible storage service for Ceph RGW or AWS S3."""
 
+import hashlib
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, BinaryIO
 
@@ -9,6 +10,7 @@ from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
+    from mypy_boto3_s3.type_defs import CopySourceTypeDef
 
 from common.core.settings import CommonSettings
 
@@ -64,23 +66,33 @@ class S3Service:
         """Get the configured bucket name."""
         return self._settings.S3_BUCKET_NAME
 
+    def generate_cas_key(self, content: bytes) -> str:
+        """Generate a content-addressable storage key based on content hash.
+
+        Args:
+            content: The binary content to hash.
+
+        Returns:
+            S3 key in the format "cas/{sha256_hash}".
+        """
+        content_hash = hashlib.sha256(content).hexdigest()
+        return f"cas/{content_hash}"
+
     def upload_file(
         self,
         file_obj: BinaryIO,
-        key: str,
+        s3_key: str,
         content_type: str | None = None,
-        metadata: dict[str, str] | None = None,
-    ) -> str:
+    ) -> bool:
         """Upload a file to S3.
 
         Args:
             file_obj: File-like object to upload.
-            key: S3 object key (path).
+            s3_key: S3 object key (path).
             content_type: Optional MIME type.
-            metadata: Optional metadata dict.
 
         Returns:
-            The S3 key of the uploaded object.
+            True if upload was successful.
 
         Raises:
             S3ServiceError: If upload fails.
@@ -88,209 +100,155 @@ class S3Service:
         extra_args: dict[str, Any] = {}
         if content_type:
             extra_args["ContentType"] = content_type
-        if metadata:
-            extra_args["Metadata"] = metadata
 
         try:
             self.client.upload_fileobj(
                 file_obj,
                 self.bucket,
-                key,
+                s3_key,
                 ExtraArgs=extra_args if extra_args else None,
             )
-            return key
+            return True
         except ClientError as e:
             raise S3ServiceError(f"Failed to upload file: {e}") from e
 
-    def upload_bytes(
-        self,
-        data: bytes,
-        key: str,
-        content_type: str | None = None,
-        metadata: dict[str, str] | None = None,
-    ) -> str:
-        """Upload bytes to S3.
-
-        Args:
-            data: Bytes to upload.
-            key: S3 object key (path).
-            content_type: Optional MIME type.
-            metadata: Optional metadata dict.
-
-        Returns:
-            The S3 key of the uploaded object.
-        """
-        return self.upload_file(BytesIO(data), key, content_type, metadata)
-
-    def download_file(self, key: str) -> bytes:
+    def download_file(self, s3_key: str) -> BytesIO:
         """Download a file from S3.
 
         Args:
-            key: S3 object key (path).
+            s3_key: S3 object key (path).
 
         Returns:
-            File contents as bytes.
+            BytesIO object containing the file data.
 
         Raises:
             S3ObjectNotFoundError: If object doesn't exist.
             S3ServiceError: If download fails.
         """
         try:
-            response = self.client.get_object(Bucket=self.bucket, Key=key)
-            return response["Body"].read()
+            file_obj = BytesIO()
+            self.client.download_fileobj(self.bucket, s3_key, file_obj)
+            file_obj.seek(0)
+            return file_obj
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "NoSuchKey":
-                raise S3ObjectNotFoundError(f"Object not found: {key}") from e
+                raise S3ObjectNotFoundError(f"Object not found: {s3_key}") from e
             raise S3ServiceError(f"Failed to download file: {e}") from e
 
-    def download_to_file(self, key: str, file_obj: BinaryIO) -> None:
-        """Download a file from S3 to a file-like object.
+    def copy_file(self, source_s3_key: str, target_s3_key: str) -> bool:
+        """Copy a file within S3.
 
         Args:
-            key: S3 object key (path).
-            file_obj: File-like object to write to.
+            source_s3_key: S3 key of the source file.
+            target_s3_key: S3 key for the target file.
+
+        Returns:
+            True if copy was successful.
 
         Raises:
-            S3ObjectNotFoundError: If object doesn't exist.
-            S3ServiceError: If download fails.
+            S3ObjectNotFoundError: If source object doesn't exist.
+            S3ServiceError: If copy fails.
         """
         try:
-            self.client.download_fileobj(self.bucket, key, file_obj)
+            copy_source: "CopySourceTypeDef" = {
+                "Bucket": self.bucket,
+                "Key": source_s3_key,
+            }
+            self.client.copy_object(
+                CopySource=copy_source,
+                Bucket=self.bucket,
+                Key=target_s3_key,
+            )
+            return True
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "NoSuchKey":
-                raise S3ObjectNotFoundError(f"Object not found: {key}") from e
-            raise S3ServiceError(f"Failed to download file: {e}") from e
+                raise S3ObjectNotFoundError(
+                    f"Source object not found: {source_s3_key}"
+                ) from e
+            raise S3ServiceError(f"Failed to copy file: {e}") from e
 
-    def delete_file(self, key: str) -> None:
+    def delete_file(self, s3_key: str) -> bool:
         """Delete a file from S3.
 
         Args:
-            key: S3 object key (path).
+            s3_key: S3 object key (path).
+
+        Returns:
+            True if deletion was successful.
 
         Raises:
             S3ServiceError: If deletion fails.
         """
         try:
-            self.client.delete_object(Bucket=self.bucket, Key=key)
+            self.client.delete_object(Bucket=self.bucket, Key=s3_key)
+            return True
         except ClientError as e:
             raise S3ServiceError(f"Failed to delete file: {e}") from e
 
-    def file_exists(self, key: str) -> bool:
+    def file_exists(self, s3_key: str) -> bool:
         """Check if a file exists in S3.
 
         Args:
-            key: S3 object key (path).
+            s3_key: S3 object key (path).
 
         Returns:
             True if the object exists, False otherwise.
+
+        Raises:
+            S3ServiceError: If the check fails for reasons other than not found.
         """
         try:
-            self.client.head_object(Bucket=self.bucket, Key=key)
+            self.client.head_object(Bucket=self.bucket, Key=s3_key)
             return True
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "404":
                 return False
             raise S3ServiceError(f"Failed to check file existence: {e}") from e
 
-    def get_file_metadata(self, key: str) -> dict[str, Any]:
+    def get_file_metadata(self, s3_key: str) -> dict[str, Any]:
         """Get metadata for a file in S3.
 
         Args:
-            key: S3 object key (path).
+            s3_key: S3 object key (path).
 
         Returns:
-            Dict with ContentLength, ContentType, LastModified, Metadata, etc.
+            Dict with content_length, content_type, last_modified, etag.
 
         Raises:
             S3ObjectNotFoundError: If object doesn't exist.
             S3ServiceError: If operation fails.
         """
         try:
-            response = self.client.head_object(Bucket=self.bucket, Key=key)
+            response = self.client.head_object(Bucket=self.bucket, Key=s3_key)
             return {
                 "content_length": response.get("ContentLength"),
                 "content_type": response.get("ContentType"),
                 "last_modified": response.get("LastModified"),
-                "metadata": response.get("Metadata", {}),
-                "etag": response.get("ETag"),
+                "etag": response.get("ETag", "").strip('"'),
             }
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "404":
-                raise S3ObjectNotFoundError(f"Object not found: {key}") from e
+                raise S3ObjectNotFoundError(f"Object not found: {s3_key}") from e
             raise S3ServiceError(f"Failed to get file metadata: {e}") from e
 
-    def list_files(
-        self, prefix: str = "", max_keys: int = 1000
-    ) -> list[dict[str, Any]]:
-        """List files in S3 bucket with optional prefix.
-
-        Args:
-            prefix: Optional prefix to filter objects.
-            max_keys: Maximum number of keys to return.
+    def ensure_bucket_exists(self) -> bool:
+        """Ensure the configured S3 bucket exists, create if it doesn't.
 
         Returns:
-            List of dicts with Key, Size, LastModified for each object.
-        """
-        try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket,
-                Prefix=prefix,
-                MaxKeys=max_keys,
-            )
-            return [
-                {
-                    "key": obj["Key"],
-                    "size": obj["Size"],
-                    "last_modified": obj["LastModified"],
-                }
-                for obj in response.get("Contents", [])
-            ]
-        except ClientError as e:
-            raise S3ServiceError(f"Failed to list files: {e}") from e
-
-    def generate_presigned_url(
-        self,
-        key: str,
-        expiration: int = 3600,
-        http_method: str = "GET",
-    ) -> str:
-        """Generate a presigned URL for an S3 object.
-
-        Args:
-            key: S3 object key (path).
-            expiration: URL expiration time in seconds (default 1 hour).
-            http_method: HTTP method (GET for download, PUT for upload).
-
-        Returns:
-            Presigned URL string.
-
-        Raises:
-            S3ServiceError: If URL generation fails.
-        """
-        client_method = "get_object" if http_method == "GET" else "put_object"
-        try:
-            url: str = self.client.generate_presigned_url(
-                ClientMethod=client_method,
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expiration,
-            )
-            return url
-        except ClientError as e:
-            raise S3ServiceError(f"Failed to generate presigned URL: {e}") from e
-
-    def ensure_bucket_exists(self) -> None:
-        """Create the bucket if it doesn't exist.
+            True if bucket exists or was created successfully.
 
         Raises:
             S3ServiceError: If bucket creation fails.
         """
         try:
             self.client.head_bucket(Bucket=self.bucket)
+            return True
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "404":
                 try:
                     self.client.create_bucket(Bucket=self.bucket)
+                    return True
                 except ClientError as create_error:
                     raise S3ServiceError(
                         f"Failed to create bucket: {create_error}"

@@ -4,7 +4,7 @@ This is a Copier-based backend template that consolidates common patterns from m
 
 ## Sandbox Environment
 
-- This repository is bind-mounted into `/work/backend` inside a container.
+- This repository is bind-mounted into `/work/ModernAppTemplate/backend` inside a container.
 - The `.git` directory is mapped read-only, so staging or committing must happen outside the sandbox.
 - When you need to commit, provide the user with the exact commands to run.
 - The container includes poetry and the standard Python toolchain.
@@ -12,7 +12,7 @@ This is a Copier-based backend template that consolidates common patterns from m
 ## Project Structure
 
 ```
-/work/backend/
+/work/ModernAppTemplate/backend/
 ├── template/           # Copier template source (Jinja2 files)
 ├── test-app/           # Generated test application (DO NOT edit directly)
 ├── tests/              # Test suite for template validation
@@ -26,7 +26,7 @@ This is a Copier-based backend template that consolidates common patterns from m
 The `test-app/` directory is generated from the template. All changes must be made in `template/` and then regenerated:
 
 ```bash
-cd /work/backend
+cd /work/ModernAppTemplate/backend
 poetry run copier copy . test-app --force
 ```
 
@@ -34,18 +34,18 @@ poetry run copier copy . test-app --force
 After any change to files in `template/`, regenerate test-app and verify tests pass:
 
 ```bash
-cd /work/backend
+cd /work/ModernAppTemplate/backend
 poetry run copier copy . test-app --force
 cd test-app && poetry install
 poetry run pytest ../tests/ -v
 ```
 
 ### 3. Tests Live Outside test-app
-Tests are in `/work/backend/tests/`, not inside test-app. This allows testing the generated output without the tests being part of the template itself.
+Tests are in `/work/ModernAppTemplate/backend/tests/`, not inside test-app. This allows testing the generated output without the tests being part of the template itself.
 
 Run tests using test-app's poetry environment:
 ```bash
-cd /work/backend/test-app
+cd /work/ModernAppTemplate/backend/test-app
 poetry run pytest ../tests/ -v
 ```
 
@@ -64,7 +64,7 @@ Tests use in-memory SQLite. The `test_settings` fixture must call `settings.set_
 1. Create the module in `template/common/`
 2. If it needs DI, add provider to `template/common/core/container.py.jinja`
 3. Regenerate test-app
-4. Add tests to `/work/backend/tests/`
+4. Add tests to `/work/ModernAppTemplate/backend/tests/`
 5. Verify all tests pass
 
 ### Exception Handling
@@ -99,7 +99,7 @@ When developing common modules, follow this workflow to keep template and apps i
 
 After any template change:
 ```bash
-cd /work/backend
+cd /work/ModernAppTemplate/backend
 rm -rf test-app
 copier copy template test-app --trust \
   -d project_name=test-app \
@@ -116,7 +116,7 @@ cd test-app && echo "# Test App" > README.md && poetry install
 ### 3. Run Template Tests
 
 ```bash
-cd /work/backend/test-app
+cd /work/ModernAppTemplate/backend/test-app
 python -m pytest ../tests/ -v      # Template test suite (107 tests)
 python -m pytest tests/ -v          # Generated app tests
 ```
@@ -142,8 +142,8 @@ python -m pytest tests/ -v
 ### 6. Verify All Test Suites Pass
 
 Before considering work complete, all three must pass:
-- [ ] Template tests (`/work/backend/tests/`) - 107 tests
-- [ ] Generated test-app tests (`/work/backend/test-app/tests/`) - 2 tests
+- [ ] Template tests (`/work/ModernAppTemplate/backend/tests/`) - 107 tests
+- [ ] Generated test-app tests (`/work/ModernAppTemplate/backend/test-app/tests/`) - 2 tests
 - [ ] Real app tests (e.g., `/work/ZigbeeControl/backend/tests/`) - 31 tests
 
 ### Quick Reference
@@ -162,6 +162,71 @@ These apps use the patterns consolidated in this template:
 - `/work/IoTSupport/backend/` - OIDC auth, MQTT
 - `/work/ZigbeeControl/backend/` - Simplest, good reference
 - `/work/DHCPApp/backend/` - Basic CRUD
+
+## Version Tracking in Apps
+
+When an app is updated from the template, the `_commit` field in `.copier-answers.yml` must be manually updated to track which template version was used.
+
+**After syncing template changes to an app:**
+1. Get the current HEAD commit hash of the template repository:
+   ```bash
+   cd /work/ModernAppTemplate/backend
+   git rev-parse HEAD
+   ```
+2. Update the app's `.copier-answers.yml`:
+   ```yaml
+   _commit: <commit-hash-from-step-1>
+   ```
+
+This allows tracking which template version an app is based on, making future updates easier to reason about.
+
+**Note:** Always commit template changes first before recording the commit hash in apps, otherwise the hash will reference uncommitted work.
+
+## Changelog
+
+All template changes must be documented in `changelog.md` at the repository root. This changelog is essential for tracking what changed and helping apps update from the template.
+
+### Maintaining the Changelog
+
+When making changes to the template, add an entry to `changelog.md` with:
+
+1. **Date** - When the change was made
+2. **What changed and why** - A clear description of the change and its purpose
+3. **Migration instructions** - Specific steps apps need to take to adopt the change
+
+**Entry format:**
+```markdown
+## YYYY-MM-DD
+
+### <Brief title of change>
+
+**What changed:** <Description of what was changed and why>
+
+**Migration steps:**
+1. <Step 1>
+2. <Step 2>
+...
+```
+
+### Using the Changelog When Updating an App
+
+When updating an app from the template:
+
+1. **Find the app's current version:**
+   ```bash
+   grep "_commit:" /path/to/app/.copier-answers.yml
+   ```
+
+2. **View changelog entries added since that version:**
+   ```bash
+   cd /work/ModernAppTemplate/backend
+   git diff <template-commit-hash-from-app>..HEAD -- changelog.md
+   ```
+   This shows exactly which changelog entries were added since the app's last update.
+
+3. **Follow the migration steps** in each new changelog entry to update the app
+
+4. **Update the app's `_commit`** to the new HEAD hash after completing all migrations
 
 ## Commit Guidelines
 

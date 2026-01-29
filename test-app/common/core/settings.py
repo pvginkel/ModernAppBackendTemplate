@@ -73,6 +73,12 @@ class CommonSettings(BaseSettings):
         description="Seconds to wait for a connection before timeout"
     )
 
+    # Drain endpoint authentication
+    DRAIN_AUTH_KEY: str | None = Field(
+        default=None,
+        description="Bearer token for authenticating /health/drain requests"
+    )
+
     # Internal override for test fixtures (not set via env)
     _engine_options_override: dict[str, Any] | None = None
 

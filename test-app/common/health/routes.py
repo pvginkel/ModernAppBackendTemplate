@@ -4,11 +4,11 @@ import logging
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from common.core.shutdown import ShutdownCoordinatorProtocol
 
-from common.database.health import check_db_connection
+from common.database.health import check_db_connection, get_pending_migrations
 
 
 from common.storage.health import check_s3_health
@@ -63,6 +63,17 @@ def readyz(
     checks["database"] = {"connected": db_connected}
     if not db_connected:
         all_healthy = False
+    else:
+        # Check for pending migrations
+        pending_migrations = get_pending_migrations()
+        if pending_migrations:
+            checks["migrations"] = {"pending": len(pending_migrations)}
+            return jsonify({
+                "status": "migrations pending",
+                "ready": False,
+                **checks,
+            }), 503
+        checks["migrations"] = {"pending": 0}
 
 
     # Check S3 connectivity
@@ -83,3 +94,39 @@ def readyz(
         "ready": True,
         **checks,
     }), 200
+
+
+@health_bp.route("/drain", methods=["GET"])
+@inject
+def drain(
+    shutdown_coordinator: ShutdownCoordinatorProtocol = Provide["shutdown_coordinator"],
+    settings: Any = Provide["config"],
+) -> Any:
+    """Drain endpoint for manual graceful shutdown initiation.
+
+    Requires bearer token authentication against DRAIN_AUTH_KEY config setting.
+    Calls shutdown() on the shutdown coordinator and returns health status.
+    """
+    # Check if DRAIN_AUTH_KEY is configured
+    drain_auth_key = getattr(settings, "DRAIN_AUTH_KEY", None)
+    if not drain_auth_key:
+        logger.error("DRAIN_AUTH_KEY not configured, rejecting drain request")
+        return jsonify({"status": "unauthorized", "ready": False}), 401
+
+    # Extract Authorization header
+    auth_header = request.headers.get("Authorization", "")
+
+    # Validate token
+    if auth_header != f"Bearer {drain_auth_key}":
+        logger.warning("Drain request with invalid token")
+        return jsonify({"status": "unauthorized", "ready": False}), 401
+
+    # Call shutdown on shutdown coordinator
+    try:
+        logger.info("Authenticated drain request received, starting drain")
+        shutdown_coordinator.shutdown()
+        logger.info("Shutdown complete")
+        return jsonify({"status": "drained", "ready": True}), 200
+    except Exception as e:
+        logger.error(f"Error during drain: {e}")
+        return jsonify({"status": "error", "ready": False}), 500
