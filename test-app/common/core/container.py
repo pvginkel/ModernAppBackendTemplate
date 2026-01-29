@@ -49,7 +49,7 @@ class CommonContainer(containers.DeclarativeContainer):
         graceful_shutdown_timeout=config.provided.GRACEFUL_SHUTDOWN_TIMEOUT,
     )
 
-    # Metrics service - singleton with background updater
+    # Metrics service - minimal, just shutdown metrics and get_metrics_text()
     metrics_service = providers.Singleton(
         MetricsService,
         shutdown_coordinator=shutdown_coordinator,
@@ -61,18 +61,16 @@ class CommonContainer(containers.DeclarativeContainer):
         shutdown_coordinator=shutdown_coordinator,
     )
 
-    # SSE Gateway connection manager
+    # SSE Gateway connection manager (owns its own metrics)
     connection_manager = providers.Singleton(
         ConnectionManager,
         gateway_url=config.provided.SSE_GATEWAY_URL,
-        metrics_service=metrics_service,
         http_timeout=2.0,
     )
 
-    # Task service with SSE broadcasting
+    # Task service with SSE broadcasting (owns its own metrics)
     task_service = providers.Singleton(
         TaskService,
-        metrics_service=metrics_service,
         shutdown_coordinator=shutdown_coordinator,
         broadcaster=connection_manager,
         max_workers=config.provided.TASK_MAX_WORKERS,

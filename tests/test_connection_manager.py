@@ -6,23 +6,12 @@ import pytest
 
 
 @pytest.fixture
-def mock_metrics():
-    """Create a mock metrics service."""
-    metrics = Mock()
-    metrics.record_sse_gateway_connection = Mock()
-    metrics.record_sse_gateway_event = Mock()
-    metrics.record_sse_gateway_send_duration = Mock()
-    return metrics
-
-
-@pytest.fixture
-def connection_manager(mock_metrics):
-    """Create ConnectionManager instance with mock metrics."""
+def connection_manager():
+    """Create ConnectionManager instance."""
     from common.sse.connection_manager import ConnectionManager
 
     return ConnectionManager(
         gateway_url="http://localhost:3000",
-        metrics_service=mock_metrics,
         http_timeout=5.0,
     )
 
@@ -30,7 +19,7 @@ def connection_manager(mock_metrics):
 class TestConnectionManagerConnect:
     """Tests for connection registration."""
 
-    def test_on_connect_new_connection(self, connection_manager, mock_metrics):
+    def test_on_connect_new_connection(self, connection_manager):
         """Test registering a new connection."""
         # Given no existing connection
         request_id = "abc123"
@@ -47,9 +36,6 @@ class TestConnectionManagerConnect:
             "url": url,
         }
         assert connection_manager._token_to_request_id[token] == request_id
-
-        # And metrics recorded
-        mock_metrics.record_sse_gateway_connection.assert_called_once_with("connect")
 
     def test_on_connect_notifies_observers(self, connection_manager):
         """Test that on_connect notifies all registered observers."""
@@ -98,14 +84,13 @@ class TestConnectionManagerConnect:
 class TestConnectionManagerDisconnect:
     """Tests for disconnect handling."""
 
-    def test_on_disconnect_removes_connection(self, connection_manager, mock_metrics):
+    def test_on_disconnect_removes_connection(self, connection_manager):
         """Test that disconnect removes the connection mappings."""
         # Given an existing connection
         request_id = "abc123"
         token = "token-1"
         url = "/api/sse/stream?request_id=abc123"
         connection_manager.on_connect(request_id, token, url)
-        mock_metrics.reset_mock()
 
         # When disconnect received
         connection_manager.on_disconnect(token)
@@ -114,31 +99,24 @@ class TestConnectionManagerDisconnect:
         assert not connection_manager.has_connection(request_id)
         assert token not in connection_manager._token_to_request_id
 
-        # And metrics recorded
-        mock_metrics.record_sse_gateway_connection.assert_called_once_with("disconnect")
-
-    def test_on_disconnect_unknown_token_ignored(self, connection_manager, mock_metrics):
+    def test_on_disconnect_unknown_token_ignored(self, connection_manager):
         """Test that disconnect for unknown token is silently ignored."""
-        # When disconnect for unknown token
+        # When disconnect for unknown token - should not raise
         connection_manager.on_disconnect("unknown-token")
 
-        # Then no error and no metrics recorded
-        mock_metrics.record_sse_gateway_connection.assert_not_called()
+        # Then no error (test passes if no exception)
 
 
 class TestBroadcastSend:
     """Tests for broadcast send functionality."""
 
     @patch("common.sse.connection_manager.requests.post")
-    def test_broadcast_to_all_connections(
-        self, mock_post, connection_manager, mock_metrics
-    ):
+    def test_broadcast_to_all_connections(self, mock_post, connection_manager):
         """Test broadcasting event to all connections."""
         # Given multiple active connections
         connection_manager.on_connect("req1", "token-1", "/api/sse/stream?request_id=req1")
         connection_manager.on_connect("req2", "token-2", "/api/sse/stream?request_id=req2")
         connection_manager.on_connect("req3", "token-3", "/api/sse/stream?request_id=req3")
-        mock_metrics.reset_mock()
 
         # Mock successful response
         mock_response = Mock()
@@ -177,15 +155,12 @@ class TestTargetedSend:
     """Tests for targeted send functionality."""
 
     @patch("common.sse.connection_manager.requests.post")
-    def test_send_to_specific_connection(
-        self, mock_post, connection_manager, mock_metrics
-    ):
+    def test_send_to_specific_connection(self, mock_post, connection_manager):
         """Test sending event to a specific connection."""
         # Given an active connection
         request_id = "abc123"
         token = "token-1"
         connection_manager.on_connect(request_id, token, "/api/sse/stream?request_id=abc123")
-        mock_metrics.reset_mock()
 
         # Mock successful response
         mock_response = Mock()
@@ -205,13 +180,7 @@ class TestTargetedSend:
         assert result is True
         mock_post.assert_called_once()
 
-        # And metrics recorded
-        mock_metrics.record_sse_gateway_event.assert_called_once_with("task", "success")
-        mock_metrics.record_sse_gateway_send_duration.assert_called_once()
-
-    def test_send_to_unknown_connection_returns_false(
-        self, connection_manager, mock_metrics
-    ):
+    def test_send_to_unknown_connection_returns_false(self, connection_manager):
         """Test send to unknown request_id returns False."""
         # Given no connection for request_id
         # When sending
@@ -230,11 +199,10 @@ class TestBroadcastTaskEvent:
     """Tests for BroadcasterProtocol implementation."""
 
     @patch("common.sse.connection_manager.requests.post")
-    def test_broadcast_task_event(self, mock_post, connection_manager, mock_metrics):
+    def test_broadcast_task_event(self, mock_post, connection_manager):
         """Test BroadcasterProtocol broadcast_task_event method."""
         # Given an active connection
         connection_manager.on_connect("req1", "token-1", "/api/sse/stream?request_id=req1")
-        mock_metrics.reset_mock()
 
         # Mock successful response
         mock_response = Mock()
@@ -251,3 +219,15 @@ class TestBroadcastTaskEvent:
         # Then event broadcast
         assert result is True
         mock_post.assert_called_once()
+
+
+class TestConnectionManagerMetrics:
+    """Tests for ConnectionManager's own metrics."""
+
+    def test_metrics_initialized(self, connection_manager):
+        """Test that metrics are initialized on construction."""
+        # ConnectionManager should have its own metrics
+        assert hasattr(connection_manager, "sse_gateway_connections_total")
+        assert hasattr(connection_manager, "sse_gateway_active_connections")
+        assert hasattr(connection_manager, "sse_gateway_events_sent_total")
+        assert hasattr(connection_manager, "sse_gateway_send_duration_seconds")

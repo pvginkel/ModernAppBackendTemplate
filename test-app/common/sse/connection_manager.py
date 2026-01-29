@@ -17,18 +17,16 @@ import logging
 import threading
 from collections.abc import Callable
 from time import perf_counter
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import requests
+from prometheus_client import Counter, Gauge, Histogram
 
 from common.sse.schemas import (
     SSEGatewayEventData,
     SSEGatewaySendRequest,
 )
 from common.tasks.protocols import BroadcasterProtocol
-
-if TYPE_CHECKING:
-    from common.metrics.service import MetricsServiceProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -39,18 +37,15 @@ class ConnectionManager(BroadcasterProtocol):
     def __init__(
         self,
         gateway_url: str,
-        metrics_service: "MetricsServiceProtocol",
         http_timeout: float = 5.0,
     ):
         """Initialize ConnectionManager.
 
         Args:
             gateway_url: Base URL for SSE Gateway (e.g., "http://localhost:3000")
-            metrics_service: Metrics service for observability
             http_timeout: Timeout for HTTP requests to SSE Gateway in seconds
         """
         self.gateway_url = gateway_url.rstrip("/")
-        self.metrics_service = metrics_service
         self.http_timeout = http_timeout
 
         # Bidirectional mappings
@@ -64,6 +59,31 @@ class ConnectionManager(BroadcasterProtocol):
 
         # Thread safety
         self._lock = threading.RLock()
+
+        # Own metrics (registered with global Prometheus registry)
+        self._init_metrics()
+
+    def _init_metrics(self) -> None:
+        """Initialize Prometheus metrics owned by this service."""
+        self.sse_gateway_connections_total = Counter(
+            "sse_gateway_connections_total",
+            "Total SSE Gateway connection lifecycle events",
+            ["action"],
+        )
+        self.sse_gateway_active_connections = Gauge(
+            "sse_gateway_active_connections",
+            "Current number of active SSE Gateway connections",
+        )
+        self.sse_gateway_events_sent_total = Counter(
+            "sse_gateway_events_sent_total",
+            "Total events sent to SSE Gateway",
+            ["service", "status"],
+        )
+        self.sse_gateway_send_duration_seconds = Histogram(
+            "sse_gateway_send_duration_seconds",
+            "Duration of SSE Gateway HTTP send calls",
+            ["service"],
+        )
 
     def register_on_connect(self, callback: Callable[[str], None]) -> None:
         """Register a callback to be notified when connections are established.
@@ -117,7 +137,7 @@ class ConnectionManager(BroadcasterProtocol):
             self._token_to_request_id[token] = request_id
 
             # Record connection metric
-            self.metrics_service.record_sse_gateway_connection("connect")
+            self._record_connection("connect")
 
             logger.info(
                 "Registered SSE Gateway connection",
@@ -190,7 +210,7 @@ class ConnectionManager(BroadcasterProtocol):
             del self._token_to_request_id[token]
 
             # Record disconnect metric
-            self.metrics_service.record_sse_gateway_connection("disconnect")
+            self._record_connection("disconnect")
 
             logger.info(
                 "Unregistered SSE Gateway connection",
@@ -350,7 +370,7 @@ class ConnectionManager(BroadcasterProtocol):
                     with self._lock:
                         self._connections.pop(request_id, None)
                         self._token_to_request_id.pop(token, None)
-                self.metrics_service.record_sse_gateway_event(service_type, "error")
+                self._record_event(service_type, "error")
                 return False
 
             if response.status_code != 200:
@@ -362,7 +382,7 @@ class ConnectionManager(BroadcasterProtocol):
                         "response_body": response.text,
                     },
                 )
-                self.metrics_service.record_sse_gateway_event(service_type, "error")
+                self._record_event(service_type, "error")
                 return False
 
             logger.debug(
@@ -372,7 +392,7 @@ class ConnectionManager(BroadcasterProtocol):
                     "event_name": event_name,
                 },
             )
-            self.metrics_service.record_sse_gateway_event(service_type, "success")
+            self._record_event(service_type, "success")
             return True
 
         except requests.RequestException as e:
@@ -385,12 +405,12 @@ class ConnectionManager(BroadcasterProtocol):
                     "error_type": type(e).__name__,
                 },
             )
-            self.metrics_service.record_sse_gateway_event(service_type, "error")
+            self._record_event(service_type, "error")
             return False
 
         finally:
             duration = perf_counter() - start_time
-            self.metrics_service.record_sse_gateway_send_duration(service_type, duration)
+            self._record_send_duration(service_type, duration)
 
     def _close_connection_internal(self, token: str, request_id: str) -> None:
         """Close a connection via SSE Gateway (best-effort, no retries).
@@ -431,3 +451,34 @@ class ConnectionManager(BroadcasterProtocol):
                     "error": str(e),
                 },
             )
+
+    # Metrics recording methods (private)
+
+    def _record_connection(self, action: str) -> None:
+        """Record SSE Gateway connection lifecycle event."""
+        try:
+            self.sse_gateway_connections_total.labels(action=action).inc()
+            if action == "connect":
+                self.sse_gateway_active_connections.inc()
+            elif action == "disconnect":
+                self.sse_gateway_active_connections.dec()
+        except Exception as e:
+            logger.error(f"Error recording SSE Gateway connection metric: {e}")
+
+    def _record_event(self, service: str, status: str) -> None:
+        """Record SSE Gateway event send attempt."""
+        try:
+            self.sse_gateway_events_sent_total.labels(
+                service=service, status=status
+            ).inc()
+        except Exception as e:
+            logger.error(f"Error recording SSE Gateway event metric: {e}")
+
+    def _record_send_duration(self, service: str, duration: float) -> None:
+        """Record SSE Gateway HTTP send duration."""
+        try:
+            self.sse_gateway_send_duration_seconds.labels(service=service).observe(
+                duration
+            )
+        except Exception as e:
+            logger.error(f"Error recording SSE Gateway send duration: {e}")

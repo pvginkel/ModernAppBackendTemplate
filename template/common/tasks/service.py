@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from prometheus_client import Counter, Histogram
+
 from common.core.errors import InvalidOperationException
 from common.core.shutdown import LifetimeEvent
 from common.tasks.base_task import BaseTask, ProgressHandle
@@ -24,7 +26,6 @@ from common.tasks.schemas import (
 
 if TYPE_CHECKING:
     from common.core.shutdown import ShutdownCoordinatorProtocol
-    from common.metrics.service import MetricsServiceProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,6 @@ class TaskService:
 
     def __init__(
         self,
-        metrics_service: "MetricsServiceProtocol",
         shutdown_coordinator: "ShutdownCoordinatorProtocol",
         broadcaster: BroadcasterProtocol,
         max_workers: int = 4,
@@ -79,7 +79,6 @@ class TaskService:
         """Initialize TaskService with configurable parameters.
 
         Args:
-            metrics_service: Instance of MetricsService for recording metrics
             shutdown_coordinator: Coordinator for graceful shutdown
             broadcaster: Broadcaster for task events (SSE or null)
             max_workers: Maximum number of concurrent tasks
@@ -89,7 +88,6 @@ class TaskService:
         self.max_workers = max_workers
         self.task_timeout = task_timeout
         self.cleanup_interval = cleanup_interval
-        self.metrics_service = metrics_service
         self.shutdown_coordinator = shutdown_coordinator
         self.broadcaster = broadcaster
         self._tasks: dict[str, TaskInfo] = {}
@@ -99,6 +97,9 @@ class TaskService:
         self._shutdown_event = threading.Event()
         self._shutting_down = False
         self._tasks_complete_event = threading.Event()
+
+        # Own metrics (registered with global Prometheus registry)
+        self._init_metrics()
 
         # Register with shutdown coordinator
         self.shutdown_coordinator.register_lifetime_notification(
@@ -117,6 +118,19 @@ class TaskService:
         logger.info(
             f"TaskService initialized: max_workers={max_workers}, "
             f"timeout={task_timeout}s, cleanup_interval={cleanup_interval}s"
+        )
+
+    def _init_metrics(self) -> None:
+        """Initialize Prometheus metrics owned by this service."""
+        self.task_execution_total = Counter(
+            "task_execution_total",
+            "Total task executions",
+            ["task_type", "status"],
+        )
+        self.task_execution_duration_seconds = Histogram(
+            "task_execution_duration_seconds",
+            "Task execution duration in seconds",
+            ["task_type"],
         )
 
     def start_task(self, task: BaseTask, **kwargs: Any) -> TaskStartResponse:
@@ -190,6 +204,7 @@ class TaskService:
     ) -> None:
         """Execute a task in a background thread."""
         start_time = time.perf_counter()
+        task_type = type(task).__name__
 
         try:
             with self._lock:
@@ -220,9 +235,7 @@ class TaskService:
                     task_info.end_time = datetime.now(UTC)
                     task_info.result = result.model_dump() if result else None
 
-                    self.metrics_service.record_task_execution(
-                        type(task).__name__, duration, "success"
-                    )
+                    self._record_task_execution(task_type, duration, "success")
 
                     self._broadcast_event(
                         TaskEvent(
@@ -249,9 +262,7 @@ class TaskService:
                     task_info.end_time = datetime.now(UTC)
                     task_info.error = error_msg
 
-                    self.metrics_service.record_task_execution(
-                        type(task).__name__, duration, "error"
-                    )
+                    self._record_task_execution(task_type, duration, "error")
 
             self._broadcast_event(
                 TaskEvent(
@@ -380,3 +391,19 @@ class TaskService:
             self._task_instances.clear()
 
         logger.info("TaskService shutdown complete")
+
+    # Metrics recording methods (private)
+
+    def _record_task_execution(
+        self, task_type: str, duration: float, status: str
+    ) -> None:
+        """Record task execution metrics."""
+        try:
+            self.task_execution_total.labels(
+                task_type=task_type, status=status
+            ).inc()
+            self.task_execution_duration_seconds.labels(
+                task_type=task_type
+            ).observe(duration)
+        except Exception as e:
+            logger.error(f"Error recording task execution metric: {e}")

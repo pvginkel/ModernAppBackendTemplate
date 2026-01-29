@@ -120,6 +120,13 @@ class MetricsUpdateCoordinator:
 
             self._run_updaters()
 
+    def update_all(self) -> None:
+        """Manually trigger all registered updaters.
+
+        Useful for testing or forcing an immediate metrics refresh.
+        """
+        self._run_updaters()
+
     def _run_updaters(self) -> None:
         """Execute all registered updaters."""
         with self._lock:
