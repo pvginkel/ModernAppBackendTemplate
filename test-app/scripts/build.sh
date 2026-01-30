@@ -4,4 +4,4 @@ set -e
 
 . "$(dirname "$0")/stop.sh"
 
-docker build -t "$NAME":latest .
+docker build $BUILD_ARGS -t "$NAME":latest .

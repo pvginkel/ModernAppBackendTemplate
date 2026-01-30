@@ -5,93 +5,30 @@ from dependency_injector import containers, providers
 from sqlalchemy.orm import sessionmaker
 
 from common.core.settings import CommonSettings
-from common.core.shutdown import ShutdownCoordinator
-from common.metrics.service import MetricsService
-from common.metrics.coordinator import MetricsUpdateCoordinator
-from common.tasks.service import TaskService
-from common.tasks.protocols import NullBroadcaster
-
-from common.sse.connection_manager import ConnectionManager
-
-
-from common.storage.s3_service import S3Service
-
-
-from common.auth.oidc import OIDCAuthenticator
-from common.auth.oidc_client import OIDCClient
-
 
 
 class CommonContainer(containers.DeclarativeContainer):
-    """Base container with common infrastructure services.
+    """Base container with dependency declarations.
 
-    Apps should extend this class to add their own services:
+    Apps must satisfy these dependencies and define all services.
 
-        from common.core.container import CommonContainer
+    This container only contains:
+    - Dependency declarations (placeholders that apps must provide)
+    - Simple derived providers (like db_session from session_maker)
 
-        class AppContainer(CommonContainer):
-            my_service = providers.Factory(MyService, db=CommonContainer.db_session)
+    All service definitions (shutdown_coordinator, metrics_service, etc.)
+    belong in AppContainer. This avoids inheritance issues when apps
+    override `config` with a more specific Settings type.
     """
 
-    # Configuration - must be overridden by app
+    # Configuration - must be provided by app
     config = providers.Dependency(instance_of=CommonSettings)
 
     # Alias for settings (used by auth routes)
     settings = providers.Callable(lambda c: c, c=config)
 
-    # Database session maker - must be overridden by app
+
+    # Database session maker - must be provided by app
     session_maker = providers.Dependency(instance_of=sessionmaker)
     db_session = providers.ContextLocalSingleton(session_maker.provided.call())
-
-    # Shutdown coordinator - singleton
-    shutdown_coordinator = providers.Singleton(
-        ShutdownCoordinator,
-        graceful_shutdown_timeout=config.provided.GRACEFUL_SHUTDOWN_TIMEOUT,
-    )
-
-    # Metrics service - minimal, just shutdown metrics and get_metrics_text()
-    metrics_service = providers.Singleton(
-        MetricsService,
-        shutdown_coordinator=shutdown_coordinator,
-    )
-
-    # Metrics update coordinator - for services with gauge metrics
-    metrics_coordinator = providers.Singleton(
-        MetricsUpdateCoordinator,
-        shutdown_coordinator=shutdown_coordinator,
-    )
-
-    # SSE Gateway connection manager (owns its own metrics)
-    connection_manager = providers.Singleton(
-        ConnectionManager,
-        gateway_url=config.provided.SSE_GATEWAY_URL,
-        http_timeout=2.0,
-    )
-
-    # Task service with SSE broadcasting (owns its own metrics)
-    task_service = providers.Singleton(
-        TaskService,
-        shutdown_coordinator=shutdown_coordinator,
-        broadcaster=connection_manager,
-        max_workers=config.provided.TASK_MAX_WORKERS,
-        task_timeout=config.provided.TASK_TIMEOUT_SECONDS,
-        cleanup_interval=config.provided.TASK_CLEANUP_INTERVAL_SECONDS,
-    )
-
-
-    # S3 storage service
-    s3_service = providers.Factory(S3Service, settings=config)
-
-
-    # OIDC authenticator
-    oidc_authenticator = providers.Singleton(
-        OIDCAuthenticator,
-        settings=config,
-    )
-
-    # OIDC client for token exchange
-    oidc_client = providers.Singleton(
-        OIDCClient,
-        settings=config,
-    )
 

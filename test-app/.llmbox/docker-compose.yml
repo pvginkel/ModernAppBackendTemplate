@@ -3,7 +3,7 @@ services:
     image: registry:5000/llmbox:latest
     network_mode: host
     pid: host
-    working_dir: /work//backend
+    working_dir: /work/TestApp/backend
     tty: true
     user: "${UID}:${GID}"
     environment:
@@ -16,9 +16,9 @@ services:
       - ${HOME}/.vimrc:/home/ubuntu/.vimrc:ro
       - ${HOME}/.gitconfig:/home/ubuntu/.gitconfig:ro
       - ${HOME}/.cache:/home/ubuntu/.cache:rw
-      - ../backend:/work//backend:rw
-      - ../backend/.git:/work//backend/.git:ro
-      - ../frontend:/work//frontend:rw
-      - ../frontend/.git:/work//frontend/.git:ro
+      - ../backend:/work/TestApp/backend:rw
+      - ../backend/.git:/work/TestApp/backend/.git:ro
+      - ../frontend:/work/TestApp/frontend:rw
+      - ../frontend/.git:/work/TestApp/frontend/.git:ro
     # Required for Chromium
     shm_size: 1G

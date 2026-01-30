@@ -8,6 +8,53 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-01-30
+
+### Container refactor: Services moved from CommonContainer to AppContainer
+
+**What changed:** Moved all service definitions from `CommonContainer` to `AppContainer`.
+`CommonContainer` now only contains Dependency declarations (config, session_maker) that
+apps must satisfy. This fixes inheritance issues when apps override `config` with a
+more specific Settings type.
+
+**Why:** The previous inheritance model caused RecursionError or NameError when:
+1. CommonContainer defined services referencing `config`
+2. AppContainer overrode `config` with an app-specific type
+3. dependency-injector's resolution got confused by cross-class references
+
+**Migration steps:**
+
+1. **Update `common/core/container.py`:**
+   - Copy from template, or
+   - Remove all service definitions except `config`, `settings`, `session_maker`, `db_session`
+
+2. **Update `app/container.py` (or `app/services/container.py`):**
+   - Add service definitions that were removed from CommonContainer:
+     - `shutdown_coordinator`
+     - `metrics_service`
+     - `metrics_coordinator`
+     - `task_service`
+     - `connection_manager` (if using SSE)
+     - `s3_service` (if using S3)
+     - `oidc_authenticator`, `oidc_client` (if using OIDC)
+   - Services reference config via `CommonContainer.config.provided.SETTING_NAME`
+   - Example:
+     ```python
+     from common.core.container import CommonContainer
+     from common.core.shutdown import ShutdownCoordinator
+
+     class AppContainer(CommonContainer):
+         shutdown_coordinator = providers.Singleton(
+             ShutdownCoordinator,
+             graceful_shutdown_timeout=CommonContainer.config.provided.GRACEFUL_SHUTDOWN_TIMEOUT,
+         )
+     ```
+
+3. **If you had workarounds** like `CommonContainer.shutdown_coordinator` or re-declared
+   inherited providers, remove them - direct references now work.
+
+---
+
 ## 2026-01-29
 
 ### Added change workflow documentation and agent configurations
