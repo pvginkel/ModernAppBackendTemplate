@@ -2,19 +2,19 @@
 
 [[package]]
 name = "alembic"
-version = "1.18.2"
+version = "1.18.3"
 description = "A database migration tool for SQLAlchemy."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "alembic-1.18.2-py3-none-any.whl", hash = "sha256:18a5f6448af4864cc308aadf33eb37c0116da9a60fd9bb3f31ccb1b522b4a9b9"},
-    {file = "alembic-1.18.2.tar.gz", hash = "sha256:1c3ddb635f26efbc80b1b90c5652548202022d4e760f6a78d6d85959280e3684"},
+    {file = "alembic-1.18.3-py3-none-any.whl", hash = "sha256:12a0359bfc068a4ecbb9b3b02cf77856033abfdb59e4a5aca08b7eacd7b74ddd"},
+    {file = "alembic-1.18.3.tar.gz", hash = "sha256:1212aa3778626f2b0f0aa6dd4e99a5f99b94bd25a0c1ac0bba3be65e081e50b0"},
 ]
 
 [package.dependencies]
 Mako = "*"
-SQLAlchemy = ">=1.4.0"
+SQLAlchemy = ">=1.4.23"
 typing-extensions = ">=4.12"
 
 [package.extras]
@@ -65,18 +65,18 @@ files = [
 
 [[package]]
 name = "boto3"
-version = "1.42.37"
+version = "1.42.38"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "boto3-1.42.37-py3-none-any.whl", hash = "sha256:e1e38fd178ffc66cfbe9cb6838b8c460000c3eb741e5f40f57eb730780ef0ed4"},
-    {file = "boto3-1.42.37.tar.gz", hash = "sha256:d8b6c52c86f3bf04f71a5a53e7fb4d1527592afebffa5170cf3ef7d70966e610"},
+    {file = "boto3-1.42.38-py3-none-any.whl", hash = "sha256:b5a748b3fdddba8aa2988af0e462996ef72dc2760b0eab30329b9d201d4b38f2"},
+    {file = "boto3-1.42.38.tar.gz", hash = "sha256:af2e5c08972d35fa4b4bc457031794343a6ddb1df5692db43302d5b5feaac23e"},
 ]
 
 [package.dependencies]
-botocore = ">=1.42.37,<1.43.0"
+botocore = ">=1.42.38,<1.43.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.16.0,<0.17.0"
 
@@ -85,14 +85,14 @@ crt = ["botocore[crt] (>=1.21.0,<2.0a0)"]
 
 [[package]]
 name = "boto3-stubs"
-version = "1.42.37"
-description = "Type annotations for boto3 1.42.37 generated with mypy-boto3-builder 8.12.0"
+version = "1.42.38"
+description = "Type annotations for boto3 1.42.38 generated with mypy-boto3-builder 8.12.0"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "boto3_stubs-1.42.37-py3-none-any.whl", hash = "sha256:07b9ac27196b233b802f8fadff2fa9c01d656927943c618dc862ff00fd592b24"},
-    {file = "boto3_stubs-1.42.37.tar.gz", hash = "sha256:1620519a55bbb26cebed95b6d8f26ba96b8ea91dadd05eafc3b8f17a587e2108"},
+    {file = "boto3_stubs-1.42.38-py3-none-any.whl", hash = "sha256:27b20004788b6bf437d4f8f2f8a81d29b13e0c974e1a46c640b58c90d90f107c"},
+    {file = "boto3_stubs-1.42.38.tar.gz", hash = "sha256:64e3d3fff4670b677ef1c594acca08170d443480a5fcf44ec9dcbe143b2b5ee4"},
 ]
 
 [package.dependencies]
@@ -154,7 +154,7 @@ bedrock-data-automation-runtime = ["mypy-boto3-bedrock-data-automation-runtime (
 bedrock-runtime = ["mypy-boto3-bedrock-runtime (>=1.42.0,<1.43.0)"]
 billing = ["mypy-boto3-billing (>=1.42.0,<1.43.0)"]
 billingconductor = ["mypy-boto3-billingconductor (>=1.42.0,<1.43.0)"]
-boto3 = ["boto3 (==1.42.37)"]
+boto3 = ["boto3 (==1.42.38)"]
 braket = ["mypy-boto3-braket (>=1.42.0,<1.43.0)"]
 budgets = ["mypy-boto3-budgets (>=1.42.0,<1.43.0)"]
 ce = ["mypy-boto3-ce (>=1.42.0,<1.43.0)"]
@@ -523,14 +523,14 @@ xray = ["mypy-boto3-xray (>=1.42.0,<1.43.0)"]
 
 [[package]]
 name = "botocore"
-version = "1.42.37"
+version = "1.42.38"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "botocore-1.42.37-py3-none-any.whl", hash = "sha256:f13bb8b560a10714d96fb7b0c7f17828dfa6e6606a1ead8c01c6ebb8765acbd8"},
-    {file = "botocore-1.42.37.tar.gz", hash = "sha256:3ec58eb98b0857f67a2ae6aa3ded51597e7335f7640be654e0e86da4f173b5b2"},
+    {file = "botocore-1.42.38-py3-none-any.whl", hash = "sha256:b67e0c4989a6bdd459cb49274df05003179165567b7789d8d920cdbdc6c2661f"},
+    {file = "botocore-1.42.38.tar.gz", hash = "sha256:eb36d09b5c61b3ede6129f7b54630049f3eeeccf1327a32cf8944563027a4002"},
 ]
 
 [package.dependencies]
@@ -543,14 +543,14 @@ crt = ["awscrt (==0.29.2)"]
 
 [[package]]
 name = "botocore-stubs"
-version = "1.42.37"
+version = "1.42.38"
 description = "Type annotations and code completion for botocore"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "botocore_stubs-1.42.37-py3-none-any.whl", hash = "sha256:5a9b2a4062f7cc19e0648508f67d3f1a1fd8d3e0d6f5a0d3244cc9656e54cc67"},
-    {file = "botocore_stubs-1.42.37.tar.gz", hash = "sha256:7357d1876ae198757dbe0a73f887449ffdda18eb075d7d3cc2e22d3580dcb17c"},
+    {file = "botocore_stubs-1.42.38-py3-none-any.whl", hash = "sha256:e21dadac08ee134cc0713884545c01b8eb1552c77e0d0c55c05e9584590e2b28"},
+    {file = "botocore_stubs-1.42.38.tar.gz", hash = "sha256:96cf63b6949264f078f5009fa72932c6fd06a88c7bde4e21ed96df6c37e8edac"},
 ]
 
 [package.dependencies]
@@ -2717,14 +2717,14 @@ testing = ["coverage (>=7.6.0)", "pytest", "pytest-cov"]
 
 [[package]]
 name = "wcwidth"
-version = "0.5.0"
+version = "0.5.2"
 description = "Measures the displayed width of unicode strings in a terminal"
 optional = false
 python-versions = ">=3.8"
 groups = ["dev"]
 files = [
-    {file = "wcwidth-0.5.0-py3-none-any.whl", hash = "sha256:1efe1361b83b0ff7877b81ba57c8562c99cf812158b778988ce17ec061095695"},
-    {file = "wcwidth-0.5.0.tar.gz", hash = "sha256:f89c103c949a693bf563377b2153082bf58e309919dfb7f27b04d862a0089333"},
+    {file = "wcwidth-0.5.2-py3-none-any.whl", hash = "sha256:46912178a64217749bf3426b21e36e849fbc46e05c949407b3e364d9f7ffcadf"},
+    {file = "wcwidth-0.5.2.tar.gz", hash = "sha256:c022c39a02a0134d1e10810da36d1f984c79648181efcc70a389f4569695f5ae"},
 ]
 
 [[package]]

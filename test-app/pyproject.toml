@@ -106,6 +106,10 @@ filterwarnings = [
     "ignore::pydantic.warnings.PydanticDeprecatedSince20",
     "ignore::DeprecationWarning:pydantic.*"
 ]
+markers = [
+    "integration: marks tests as integration tests (require external services like SSE Gateway)",
+    "slow: marks tests as slow running",
+]
 
 [tool.coverage.run]
 source = ["app", "common"]
