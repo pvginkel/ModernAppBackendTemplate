@@ -1,1 +1,0 @@
-"""Background task execution module."""
