@@ -1,0 +1,32 @@
+"""Spectree configuration with Pydantic v2 compatibility."""
+
+from typing import Any
+
+from flask import Flask
+from spectree import SpecTree
+
+api: SpecTree = None  # type: ignore
+
+
+def configure_spectree(app: Flask) -> SpecTree:
+    global api
+
+    api = SpecTree(
+        backend_name="flask",
+        title="test-app API",
+        version="1.0.0",
+        description="Test application",
+        path="api/docs",
+        validation_error_status=400,
+    )
+
+    api.register(app)
+
+    from flask import redirect
+
+    @app.route("/api/docs")
+    @app.route("/api/docs/")
+    def docs_redirect() -> Any:
+        return redirect("/api/docs/swagger/", code=302)
+
+    return api

@@ -1,6 +1,6 @@
 # Backend Template Project Guidelines
 
-This is a Copier-based backend template that consolidates common patterns from multiple Flask applications.
+This is a Copier-based backend template that generates self-contained Flask backend projects. Each generated project is plain Python with no runtime dependency on the template.
 
 ## Sandbox Environment
 
@@ -15,230 +15,152 @@ This is a Copier-based backend template that consolidates common patterns from m
 /work/ModernAppTemplate/backend/
 ├── template/           # Copier template source (Jinja2 files)
 ├── test-app/           # Generated test application (DO NOT edit directly)
-├── tests/              # Test suite for template validation
-├── copier.yml          # Copier configuration
-└── pyproject.toml      # Dev dependencies (copier, pytest)
+├── test-app-domain/    # Hand-written domain files copied into test-app after generation
+├── tests/              # Mother project test suite (infrastructure tests)
+├── copier.yml          # Copier configuration and feature flags
+├── pyproject.toml      # Dev dependencies (copier, pytest)
+├── copier_approach.md  # Complete guide for template extraction (READ THIS FIRST)
+├── ei_copier_refactoring.md  # EI refactorings needed before next extraction
+└── findings.md         # Review findings from first iteration
 ```
+
+## Key Documentation
+
+Before making changes, read these documents:
+
+- **`copier_approach.md`** — Architecture decisions, file ownership model, what worked/didn't, implementation sequence, full file inventory. This is the primary reference for template work.
+- **`ei_copier_refactoring.md`** — Refactorings needed in EI before re-extracting the template.
+- **`findings.md`** — Review findings and discussion from the first iteration.
 
 ## Critical Rules
 
 ### 1. Never Edit test-app Directly
-The `test-app/` directory is generated from the template. All changes must be made in `template/` and then regenerated:
+`test-app/` is generated from the template. All changes go in `template/`, then regenerate.
 
-```bash
-cd /work/ModernAppTemplate/backend
-poetry run copier copy . test-app --force
-```
+### 2. test-app-domain Contains App-Specific Files
+`test-app-domain/` has hand-written domain files (Item model, CRUD API, migration, tests) that get copied into `test-app/` after Copier generation. These files fill in the `_skip_if_exists` scaffolds with a real working domain.
 
-### 2. Always Regenerate After Template Changes
-After any change to files in `template/`, regenerate test-app and verify tests pass:
+### 3. Always Regenerate After Template Changes
+After any change to `template/` or `copier.yml`:
 
-```bash
-cd /work/ModernAppTemplate/backend
-poetry run copier copy . test-app --force
-cd test-app && poetry install
-poetry run pytest ../tests/ -v
-```
-
-### 3. Tests Live Outside test-app
-Tests are in `/work/ModernAppTemplate/backend/tests/`, not inside test-app. This allows testing the generated output without the tests being part of the template itself.
-
-Run tests using test-app's poetry environment:
-```bash
-cd /work/ModernAppTemplate/backend/test-app
-poetry run pytest ../tests/ -v
-```
-
-### 4. SQLite for Testing
-Tests use in-memory SQLite. The `test_settings` fixture must call `settings.set_engine_options_override({})` because SQLite doesn't support pool options.
-
-### 5. Template Syntax
-- Files ending in `.jinja` are processed by Copier and have the extension stripped
-- Use `{{ variable }}` for Copier variables (from copier.yml answers)
-- Use `{% if condition %}` for conditional sections
-- Don't over-engineer Jinja templates - only use conditionals where truly needed
-
-## Common Patterns
-
-### Adding a New Common Module
-1. Create the module in `template/common/`
-2. If it needs DI, add provider to `template/common/core/container.py.jinja`
-3. Regenerate test-app
-4. Add tests to `/work/ModernAppTemplate/backend/tests/`
-5. Verify all tests pass
-
-### Exception Handling
-All exceptions are in `common/core/errors.py`:
-- `BusinessLogicException` - base class
-- `RecordNotFoundException` - 404
-- `ResourceConflictException` - 409
-- `InvalidOperationException` - 409
-
-Use `@handle_api_errors` decorator on API endpoints.
-
-### Transaction Rollback
-Set `db_session.info["needs_rollback"] = True` when an error occurs. The teardown handler checks this flag.
-
-### Correlation ID
-Every request gets a correlation ID (from `X-Request-ID` header or generated). Access via `get_request_id()`. All error responses include `request_id`.
-
-## Development Workflow
-
-When developing common modules, follow this workflow to keep template and apps in sync:
-
-### 1. Make Changes in the Right Place
-
-**If fixing a bug or adding a feature to common modules:**
-- Edit the template files in `template/common/`
-- For non-Jinja files (pure Python), these can be directly synced to apps
-
-**If the change is app-specific:**
-- Edit only in the app's directory (e.g., `/work/ZigbeeControl/backend/app/`)
-
-### 2. Regenerate test-app
-
-After any template change:
 ```bash
 cd /work/ModernAppTemplate/backend
 rm -rf test-app
-copier copy template test-app --trust \
+poetry run copier copy . test-app --trust \
   -d project_name=test-app \
   -d project_description="Test application" \
   -d author_name="Test Author" \
   -d author_email="test@example.com" \
+  -d repo_url="https://github.com/test/test-app.git" \
+  -d image_name="registry:5000/test-app" \
+  -d backend_port=5000 \
   -d use_database=true \
   -d use_oidc=true \
   -d use_s3=true \
   -d use_sse=true
-cd test-app && echo "# Test App" > README.md && poetry install
+
+# Copy domain files (overwrite scaffolds)
+cp test-app-domain/app/startup.py test-app/app/startup.py
+cp test-app-domain/app/services/container.py test-app/app/services/container.py
+cp test-app-domain/app/exceptions.py test-app/app/exceptions.py
+cp test-app-domain/app/consts.py test-app/app/consts.py
+cp test-app-domain/app/app_config.py test-app/app/app_config.py
+cp -r test-app-domain/app/models/* test-app/app/models/
+cp test-app-domain/app/schemas/item_schema.py test-app/app/schemas/
+cp test-app-domain/app/services/item_service.py test-app/app/services/
+cp test-app-domain/app/api/items.py test-app/app/api/
+cp -r test-app-domain/tests/* test-app/tests/
+mkdir -p test-app/alembic/versions
+cp test-app-domain/alembic/versions/001_create_items.py test-app/alembic/versions/
+echo "# Test App" > test-app/README.md
+
+cd test-app && poetry install
 ```
 
-### 3. Run Template Tests
-
+### 4. Run Both Test Suites
 ```bash
 cd /work/ModernAppTemplate/backend/test-app
-python -m pytest ../tests/ -v      # Template test suite (107 tests)
-python -m pytest tests/ -v          # Generated app tests
+python -m pytest ../tests/ -v      # Mother project tests (infrastructure)
+python -m pytest tests/ -v          # Domain tests (Items CRUD)
 ```
 
-### 4. Sync to Real Apps (if applicable)
+### 5. SQLite for Testing
+Tests use in-memory SQLite with the template cloning pattern (`sqlite3.Connection.backup()`). The `test_settings` fixture must call `settings.set_engine_options_override({})` because SQLite doesn't support pool options.
 
-For non-Jinja common modules, sync changes to apps like ZigbeeControl:
-```bash
-# Compare files
-diff template/common/auth/oidc.py /work/ZigbeeControl/backend/common/auth/oidc.py
+### 6. Minimize Jinja Usage
+- Files ending in `.jinja` are processed by Copier (extension stripped)
+- Prefer plain Python files with separate files per feature over Jinja conditionals
+- Use `consts.py` (app-owned) for project name/description instead of Jinja
+- Reserve `.jinja` for files with substantial conditional sections (config.py, __init__.py, cli.py)
 
-# Copy if needed (for pure Python files only)
-cp template/common/auth/oidc.py /work/ZigbeeControl/backend/common/auth/oidc.py
-```
+## File Ownership
 
-### 5. Run App Tests
+### Template-maintained (overwritten by `copier update`)
+Infrastructure code. Developers should not edit these. See `copier_approach.md` for the full list.
 
-```bash
-cd /work/ZigbeeControl/backend
-python -m pytest tests/ -v
-```
+### App-maintained (`_skip_if_exists` — generated once, never overwritten)
+- `app/startup.py` — hook implementations (blueprints, error handlers, CLI commands)
+- `app/services/container.py` — DI container with infrastructure + app providers
+- `app/exceptions.py` — base + app-specific exceptions
+- `app/consts.py` — project constants (API title, description)
+- `app/app_config.py` — app-specific settings (separate from template Settings)
+- `app/models/__init__.py` — model imports for Alembic
+- `pyproject.toml` — dependencies (app manages after initial generation)
+- `tests/conftest.py` — imports infrastructure fixtures, adds app fixtures
+- `.env.example` — environment variable documentation
 
-### 6. Verify All Test Suites Pass
+## Feature Flags
 
-Before considering work complete, all three must pass:
-- [ ] Template tests (`/work/ModernAppTemplate/backend/tests/`) - 107 tests
-- [ ] Generated test-app tests (`/work/ModernAppTemplate/backend/test-app/tests/`) - 2 tests
-- [ ] Real app tests (e.g., `/work/ZigbeeControl/backend/tests/`) - 31 tests
+| Flag | Controls |
+|------|----------|
+| `use_database` | SQLAlchemy, Alembic, migrations, pool diagnostics, diagnostics service |
+| `use_oidc` | OIDC authentication (BFF pattern with JWT cookies) |
+| `use_s3` | S3/MinIO storage, CAS endpoints, image processing |
+| `use_sse` | Server-Sent Events via SSE Gateway |
 
-### Quick Reference
+## Common Patterns
 
-| Change Type | Edit Location | Then Do |
-|-------------|---------------|---------|
-| Common module (pure Python) | `template/common/` | Regenerate test-app, sync to apps, run all tests |
-| Common module (Jinja) | `template/common/*.jinja` | Regenerate test-app, manually update apps, run all tests |
-| App-specific code | App's `app/` directory | Run app tests only |
-| Test fixtures | `template/tests/conftest.py.jinja` | Regenerate test-app, run all tests |
+### Exception Handling
+Base exceptions in `app/exceptions.py` (app-owned):
+- `BusinessLogicException` — base class
+- `RecordNotFoundException` — 404
+- `ResourceConflictException` — 409
+- `InvalidOperationException` — 409
 
-## Reference Apps
+Error handlers in `app/utils/flask_error_handlers.py` (template-owned) convert these to JSON responses with `correlationId`.
 
-These apps use the patterns consolidated in this template:
-- `/work/ElectronicsInventory/backend/` - Most comprehensive, has AI/task features
-- `/work/IoTSupport/backend/` - OIDC auth, MQTT
-- `/work/ZigbeeControl/backend/` - Simplest, good reference
-- `/work/DHCPApp/backend/` - Basic CRUD
+### Correlation ID
+Every request gets a correlation ID from the `X-Request-ID` header (or auto-generated UUID). Access via `get_current_correlation_id()` from `app.utils`. All error responses include `correlationId`.
 
-## Version Tracking in Apps
+### Transaction Rollback
+Set `g.needs_rollback = True` when an error occurs. The `teardown_request` handler checks this flag.
 
-When an app is updated from the template, the `_commit` field in `.copier-answers.yml` must be manually updated to track which template version was used.
+### Hook Contract
+The app customizes behavior through hooks in `app/startup.py`:
+- `create_container()` — builds the DI container
+- `register_blueprints(api_bp, app)` — registers domain blueprints
+- `register_error_handlers(app)` — registers app-specific error handlers
+- `register_cli_commands(cli_app)` — registers Click CLI commands
+- `post_migration_hook(app)` — runs after database migrations
+- `load_test_data_hook(app)` — loads test fixtures
 
-**After syncing template changes to an app:**
-1. Get the current HEAD commit hash of the template repository:
-   ```bash
-   cd /work/ModernAppTemplate/backend
-   git rev-parse HEAD
-   ```
-2. Update the app's `.copier-answers.yml`:
-   ```yaml
-   _commit: <commit-hash-from-step-1>
-   ```
+## Reference App
 
-This allows tracking which template version an app is based on, making future updates easier to reason about.
-
-**Note:** Always commit template changes first before recording the commit hash in apps, otherwise the hash will reference uncommitted work.
+Template patterns are extracted from:
+- `/work/ElectronicsInventory/backend/` — primary source
 
 ## Changelog
 
-All template changes must be documented in `changelog.md` at the repository root. This changelog is essential for tracking what changed and helping apps update from the template.
+All template changes must be documented in `changelog.md`. Each entry includes:
+1. Date
+2. What changed and why
+3. Migration steps for downstream apps
 
-### Maintaining the Changelog
-
-When making changes to the template, add an entry to `changelog.md` with:
-
-1. **Date** - When the change was made
-2. **What changed and why** - A clear description of the change and its purpose
-3. **Migration instructions** - Specific steps apps need to take to adopt the change
-
-**Entry format:**
-```markdown
-## YYYY-MM-DD
-
-### <Brief title of change>
-
-**What changed:** <Description of what was changed and why>
-
-**Migration steps:**
-1. <Step 1>
-2. <Step 2>
-...
-```
-
-### Using the Changelog When Updating an App
-
-When updating an app from the template:
-
-1. **Find the app's current version:**
-   ```bash
-   grep "_commit:" /path/to/app/.copier-answers.yml
-   ```
-
-2. **View changelog entries added since that version:**
-   ```bash
-   cd /work/ModernAppTemplate/backend
-   git diff <template-commit-hash-from-app>..HEAD -- changelog.md
-   ```
-   This shows exactly which changelog entries were added since the app's last update.
-
-3. **Follow the migration steps** in each new changelog entry to update the app
-
-4. **Update the app's `_commit`** to the new HEAD hash after completing all migrations
+Apps track which template version they're on via `_commit` in `.copier-answers.yml`.
 
 ## Commit Guidelines
 
-When template changes are ready to commit:
-1. Regenerate test-app first
-2. Run full test suite
-3. Provide the user with git commands to run outside the container:
-   - Stage both template changes and regenerated test-app
-   - Use descriptive commit messages explaining the template change
-
-## Related Documentation
-
-- `docs/change_workflow.md` — Complete workflow for making changes (planning, implementation, verification)
-- `changelog.md` — Change history with migration instructions for downstream apps
-- `copier.yml` — Template configuration and available variables
+Since `.git` is read-only in the sandbox:
+1. Regenerate test-app and run full test suite
+2. Provide the user with exact git commands to run outside the container
+3. Stage both template changes and regenerated test-app

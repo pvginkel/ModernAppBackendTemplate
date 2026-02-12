@@ -1,0 +1,113 @@
+"""API blueprints."""
+
+import logging
+
+
+from dependency_injector.wiring import Provide, inject
+from flask import Blueprint, Response, request
+
+from app.config import Settings
+from app.services.auth_service import AuthService
+from app.services.container import ServiceContainer
+from app.services.oidc_client_service import OidcClientService
+from app.utils.auth import (
+    authenticate_request,
+    get_cookie_secure,
+    get_token_expiry_seconds,
+)
+
+
+logger = logging.getLogger(__name__)
+
+# Create main API blueprint
+api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+
+@api_bp.before_request
+@inject
+def before_request_authentication(
+    auth_service: AuthService = Provide[ServiceContainer.auth_service],
+    oidc_client_service: OidcClientService = Provide[ServiceContainer.oidc_client_service],
+    config: Settings = Provide[ServiceContainer.config],
+) -> None | tuple[dict[str, str], int]:
+    """Authenticate all requests to /api endpoints before processing."""
+    from flask import current_app
+
+    from app.exceptions import AuthenticationException, AuthorizationException
+
+    endpoint = request.endpoint
+    actual_func = current_app.view_functions.get(endpoint) if endpoint else None
+
+    if actual_func and getattr(actual_func, "is_public", False):
+        return None
+
+    if not config.oidc_enabled:
+        return None
+
+    try:
+        authenticate_request(auth_service, config, oidc_client_service, actual_func)
+        return None
+    except AuthenticationException as e:
+        logger.warning("Authentication failed: %s", str(e))
+        return {"error": str(e)}, 401
+    except AuthorizationException as e:
+        logger.warning("Authorization failed: %s", str(e))
+        return {"error": str(e)}, 403
+
+
+def _clear_auth_cookies(response: Response, config: Settings, cookie_secure: bool) -> None:
+    for name in (config.oidc_cookie_name, config.oidc_refresh_cookie_name, "id_token"):
+        response.set_cookie(
+            name, "", httponly=True, secure=cookie_secure,
+            samesite=config.oidc_cookie_samesite, max_age=0,
+        )
+
+
+@api_bp.after_request
+@inject
+def after_request_set_cookies(
+    response: Response,
+    config: Settings = Provide[ServiceContainer.config],
+) -> Response:
+    """Set refreshed auth cookies on response if tokens were refreshed."""
+    from flask import g
+
+    if getattr(g, "clear_auth_cookies", False):
+        _clear_auth_cookies(response, config, get_cookie_secure(config))
+        return response
+
+    pending = getattr(g, "pending_token_refresh", None)
+    if pending:
+        cookie_secure = get_cookie_secure(config)
+
+        refresh_max_age: int | None = None
+        if pending.refresh_token:
+            refresh_max_age = get_token_expiry_seconds(pending.refresh_token)
+            if refresh_max_age is None:
+                _clear_auth_cookies(response, config, cookie_secure)
+                return response
+
+        response.set_cookie(
+            config.oidc_cookie_name, pending.access_token,
+            httponly=True, secure=cookie_secure,
+            samesite=config.oidc_cookie_samesite,
+            max_age=pending.access_token_expires_in,
+        )
+
+        if pending.refresh_token and refresh_max_age is not None:
+            response.set_cookie(
+                config.oidc_refresh_cookie_name, pending.refresh_token,
+                httponly=True, secure=cookie_secure,
+                samesite=config.oidc_cookie_samesite,
+                max_age=refresh_max_age,
+            )
+
+    return response
+
+
+# Register auth blueprint
+from app.api.auth import auth_bp  # noqa: E402
+
+api_bp.register_blueprint(auth_bp)  # type: ignore[attr-defined]
+
