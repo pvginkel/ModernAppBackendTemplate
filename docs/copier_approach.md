@@ -4,9 +4,57 @@ This document captures everything learned from the first template extraction att
 
 ## Goal
 
-A Copier template that generates self-contained Flask backend projects. Each project is plain Python with no runtime dependency on the template. Template updates via `copier update` with three-way merge.
+A Copier template that generates self-contained Flask backend projects (and eventually React frontend projects). Each generated project is plain Python/TypeScript with no runtime dependency on the template. Template updates via `copier update` with three-way merge.
 
-## Architecture
+## Repository Structure
+
+Both backend and frontend templates live in a single repository. Each has its own `copier.yml` and is independently copyable. A top-level validation script regenerates both test-apps and runs all test suites in one go.
+
+```
+ModernAppTemplate/
+├── CLAUDE.md                    # Project-wide instructions
+├── docs/
+│   ├── copier_approach.md       # This file
+│   ├── ei_copier_refactoring.md # EI refactorings needed before extraction
+│   └── findings.md              # Review findings from first iteration
+├── validate.sh                  # Regenerate both test-apps, run all tests
+├── backend/
+│   ├── copier.yml               # Backend template configuration
+│   ├── template/                # Copier template source
+│   ├── test-app/                # Generated test application (DO NOT edit)
+│   ├── test-app-domain/         # Hand-written domain files for test-app
+│   ├── tests/                   # Mother project tests (infrastructure)
+│   └── pyproject.toml           # Dev dependencies (copier, pytest)
+└── frontend/
+    ├── copier.yml               # Frontend template configuration
+    ├── template/                # Copier template source
+    ├── test-app/                # Generated test application (DO NOT edit)
+    ├── test-app-domain/         # Hand-written domain files for test-app
+    └── tests/                   # Mother project tests (infrastructure)
+```
+
+### Why one repo
+
+- **Shared feature flags.** `use_oidc`, `use_sse`, etc. are full-stack features. Having both templates in the same repo makes it obvious when they drift.
+- **Coordinated changelog.** One entry covers changes that affect both sides.
+- **Single validation.** `validate.sh` regenerates both test-apps and runs all four test suites (backend mother + domain, frontend mother + domain). One command, full confidence.
+- **No downside.** Copier treats each subdirectory as an independent template. They don't interfere.
+
+### Validation script
+
+`validate.sh` at the repo root:
+1. Regenerates both test-apps from their templates
+2. Copies domain files into both
+3. Installs deps for both
+4. Runs all test suites (backend mother + domain, frontend mother + domain)
+5. Runs flag combination validation for both
+6. Reports pass/fail summary
+
+If it passes, the change is safe to port to downstream apps.
+
+---
+
+## Architecture (Backend)
 
 ### Everything under `app/`
 
@@ -25,14 +73,14 @@ The app customizes behavior through hooks in `app/startup.py` (app-owned, `_skip
 
 ### Feature flags
 
-Four boolean flags control file inclusion and conditional code sections:
+Four boolean flags control file inclusion and conditional code sections. These flags are shared between backend and frontend templates:
 
-| Flag | Controls |
-|------|----------|
-| `use_database` | SQLAlchemy, Alembic, migrations, pool diagnostics |
-| `use_oidc` | OIDC authentication (BFF pattern with JWT cookies) |
-| `use_s3` | S3 storage, CAS endpoints, image processing |
-| `use_sse` | Server-Sent Events via SSE Gateway |
+| Flag | Backend | Frontend |
+|------|---------|----------|
+| `use_database` | SQLAlchemy, Alembic, migrations, pool diagnostics | — |
+| `use_oidc` | OIDC authentication (BFF pattern with JWT cookies) | OIDC login/logout UI, token handling |
+| `use_s3` | S3 storage, CAS endpoints, image processing | File upload components |
+| `use_sse` | Server-Sent Events via SSE Gateway | SSE client, real-time update components |
 
 Files behind flags are excluded entirely via copier.yml `_exclude`. Files with conditional sections use `.jinja` suffix. **Minimize Jinja usage** — prefer plain Python files with runtime conditionals or separate files per feature over Jinja conditionals.
 
