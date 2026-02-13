@@ -85,7 +85,7 @@ class Environment(BaseSettings):
     # ── use_database ───────────────────────────────────────────────────
 
     DATABASE_URL: str = Field(
-        default="postgresql+psycopg://postgres:postgres@localhost:5432/{{ project_name }}",
+        default="postgresql+psycopg://postgres:postgres@localhost:5432/{{ database_name }}",
         description="PostgreSQL connection string",
     )
     DB_POOL_SIZE: int = Field(
@@ -191,7 +191,7 @@ class Environment(BaseSettings):
         description="S3 secret key"
     )
     S3_BUCKET_NAME: str = Field(
-        default="{{ project_name }}-attachments",
+        default="{{ s3_bucket_name }}",
         description="Single bucket for all documents"
     )
     S3_REGION: str = Field(
@@ -256,7 +256,7 @@ class Settings(BaseModel):
 
     # ── use_database ───────────────────────────────────────────────────
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/{{ project_name }}"
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/{{ database_name }}"
     db_pool_size: int = 20
     db_pool_max_overflow: int = 30
     db_pool_timeout: int = 10
@@ -291,7 +291,7 @@ class Settings(BaseModel):
     s3_endpoint_url: str = "http://localhost:9000"
     s3_access_key_id: str = "admin"
     s3_secret_access_key: str = "password"
-    s3_bucket_name: str = "{{ project_name }}-attachments"
+    s3_bucket_name: str = "{{ s3_bucket_name }}"
     s3_region: str = "us-east-1"
     s3_use_ssl: bool = False
 {% endif %}
