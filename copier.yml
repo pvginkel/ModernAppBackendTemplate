@@ -56,7 +56,7 @@ use_oidc:
 use_s3:
   type: bool
   default: false
-  help: "Include S3/MinIO storage, CAS endpoints, image processing"
+  help: "Include S3 storage, CAS endpoints, image processing"
 
 use_sse:
   type: bool
@@ -103,6 +103,10 @@ _exclude:
   - "{% if not use_s3 %}app/utils/image_processing.py{% endif %}"
   - "{% if not use_s3 %}app/utils/mime_handling.py{% endif %}"
   - "{% if not use_s3 %}app/schemas/upload_document.py{% endif %}"
+  - "{% if not use_s3 %}app/services/testing_service.py{% endif %}"
+  - "{% if not use_s3 %}app/api/testing_content.py{% endif %}"
+  - "{% if not use_s3 %}app/schemas/testing_content.py{% endif %}"
+  - "{% if not use_s3 %}app/assets{% endif %}"
 
   # SSE (sse_connection_manager.py and sse_gateway_schema.py always included — TaskService depends on them)
   - "{% if not use_sse %}app/api/sse.py{% endif %}"

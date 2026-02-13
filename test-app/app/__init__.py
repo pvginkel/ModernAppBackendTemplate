@@ -167,6 +167,10 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.api.cas import cas_bp
     app.register_blueprint(cas_bp)
 
+    # Register testing content endpoints (runtime check handles access control)
+    from app.api.testing_content import testing_content_bp
+    app.register_blueprint(testing_content_bp)
+
     @app.teardown_request
     def close_session(exc: Exception | None) -> None:
         """Close the database session after each request.

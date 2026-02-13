@@ -70,3 +70,19 @@ class TestLifecycleCoordinator(StubLifecycleCoordinator):
                 callback(LifecycleEvent.PREPARE_SHUTDOWN)
             except Exception as e:
                 logging.getLogger(__name__).error(f"Error in test shutdown callback: {e}")
+
+    def simulate_full_shutdown(self, timeout: float = 30.0) -> None:
+        """Simulate full shutdown including waiter execution and SHUTDOWN callbacks."""
+        self.simulate_shutdown()
+
+        for name, waiter in self._waiters.items():
+            try:
+                waiter(timeout)
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Error in test waiter {name}: {e}")
+
+        for callback in self._notifications:
+            try:
+                callback(LifecycleEvent.SHUTDOWN)
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Error in test shutdown complete callback: {e}")

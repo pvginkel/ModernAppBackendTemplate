@@ -7,6 +7,7 @@ from app.app_config import AppSettings
 from app.config import Settings
 from app.services.auth_service import AuthService
 from app.services.cas_image_service import CasImageService
+from app.services.testing_service import TestingService
 from app.services.frontend_version_service import FrontendVersionService
 from app.services.health_service import HealthService
 from app.services.item_service import ItemService
@@ -37,6 +38,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         s3_service=s3_service,
         app_settings=app_config,
     )
+    testing_service = providers.Factory(TestingService)
 
     # Lifecycle coordinator - manages startup and graceful shutdown
     lifecycle_coordinator = providers.Singleton(
