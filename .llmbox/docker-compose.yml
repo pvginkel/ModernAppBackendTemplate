@@ -21,6 +21,8 @@ services:
       - ../../ModernAppTemplate/backend/.git:/work/ModernAppTemplate/backend/.git:ro
       - ../../ElectronicsInventory/backend:/work/ElectronicsInventory/backend:rw
       - ../../ElectronicsInventory/backend/.git:/work/ElectronicsInventory/backend/.git:ro
+      - ../../ElectronicsInventory-2/backend:/work/ElectronicsInventory/backend-new:rw
+      - ../../ElectronicsInventory-2/backend/.git:/work/ElectronicsInventory/backend-new/.git:ro
       - ../../SSEGateway:/work/SSEGateway:rw
       - ../../SSEGateway/.git:/work/SSEGateway/.git:ro
       - ../../IoTSupport/backend:/work/IoTSupport/backend:rw
