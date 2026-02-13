@@ -1,0 +1,112 @@
+_subdirectory: template
+
+_envops:
+  trim_blocks: true
+  lstrip_blocks: true
+
+# ── Template variables ────────────────────────────────────────────────
+
+project_name:
+  type: str
+  help: "Package name, CLI name, Docker image base"
+
+project_description:
+  type: str
+  default: "A Flask backend application"
+  help: "Project description for consts.py and pyproject.toml"
+
+author_name:
+  type: str
+  help: "Author name for pyproject.toml"
+
+author_email:
+  type: str
+  help: "Author email for pyproject.toml"
+
+repo_url:
+  type: str
+  default: ""
+  help: "Git repository URL (used in Jenkinsfile)"
+
+image_name:
+  type: str
+  default: "registry:5000/{{ project_name }}"
+  help: "Docker image name (used in Jenkinsfile and build scripts)"
+
+backend_port:
+  type: int
+  default: 5000
+  help: "Server port for Dockerfile EXPOSE and scripts"
+
+testing_port_offset:
+  type: int
+  default: 10
+  help: "Offset added to backend_port for the testing port"
+
+use_database:
+  type: bool
+  default: true
+  help: "Include SQLAlchemy, Alembic, migrations, pool diagnostics"
+
+use_oidc:
+  type: bool
+  default: false
+  help: "Include OIDC authentication (BFF pattern with JWT cookies)"
+
+use_s3:
+  type: bool
+  default: false
+  help: "Include S3/MinIO storage, CAS endpoints, image processing"
+
+use_sse:
+  type: bool
+  default: false
+  help: "Include Server-Sent Events via SSE Gateway"
+
+# ── Files generated once, never overwritten ───────────────────────────
+
+_skip_if_exists:
+  - "app/startup.py"
+  - "app/services/container.py"
+  - "app/exceptions.py"
+  - "app/consts.py"
+  - "app/app_config.py"
+  - "app/models/__init__.py"
+  - "pyproject.toml"
+  - "tests/conftest.py"
+  - ".env.example"
+
+# ── Feature-flagged file exclusion ────────────────────────────────────
+
+_exclude:
+  # Database
+  - "{% if not use_database %}app/extensions.py{% endif %}"
+  - "{% if not use_database %}app/database.py{% endif %}"
+  - "{% if not use_database %}app/services/diagnostics_service.py{% endif %}"
+  - "{% if not use_database %}app/utils/pool_diagnostics.py{% endif %}"
+  - "{% if not use_database %}app/utils/empty_string_normalization.py{% endif %}"
+  - "{% if not use_database %}alembic.ini{% endif %}"
+  - "{% if not use_database %}alembic{% endif %}"
+
+  # OIDC
+  - "{% if not use_oidc %}app/api/auth.py{% endif %}"
+  - "{% if not use_oidc %}app/api/oidc_hooks.py{% endif %}"
+  - "{% if not use_oidc %}app/services/auth_service.py{% endif %}"
+  - "{% if not use_oidc %}app/services/oidc_client_service.py{% endif %}"
+  - "{% if not use_oidc %}app/utils/auth.py{% endif %}"
+
+  # S3
+  - "{% if not use_s3 %}app/api/cas.py{% endif %}"
+  - "{% if not use_s3 %}app/services/s3_service.py{% endif %}"
+  - "{% if not use_s3 %}app/services/cas_image_service.py{% endif %}"
+  - "{% if not use_s3 %}app/utils/cas_url.py{% endif %}"
+  - "{% if not use_s3 %}app/utils/image_processing.py{% endif %}"
+  - "{% if not use_s3 %}app/utils/mime_handling.py{% endif %}"
+  - "{% if not use_s3 %}app/schemas/upload_document.py{% endif %}"
+
+  # SSE (sse_connection_manager.py and sse_gateway_schema.py always included — TaskService depends on them)
+  - "{% if not use_sse %}app/api/sse.py{% endif %}"
+  - "{% if not use_sse %}app/api/testing_logs.py{% endif %}"
+  - "{% if not use_sse %}app/services/frontend_version_service.py{% endif %}"
+  - "{% if not use_sse %}app/utils/sse_utils.py{% endif %}"
+  - "{% if not use_sse %}app/utils/log_capture.py{% endif %}"
