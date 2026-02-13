@@ -102,7 +102,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v -m 'not integration'"
+addopts = "-v"
 markers = [
     "integration: marks tests as integration tests (requires external dependencies)",
     "slow: marks tests as slow running tests"

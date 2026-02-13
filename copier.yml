@@ -122,6 +122,7 @@ _exclude:
   # SSE (sse_connection_manager.py and sse_gateway_schema.py always included — TaskService depends on them)
   - "{% if not use_sse %}app/api/sse.py{% endif %}"
   - "{% if not use_sse %}app/api/testing_logs.py{% endif %}"
+  - "{% if not use_sse %}app/api/testing_sse.py{% endif %}"
   - "{% if not use_sse %}app/services/frontend_version_service.py{% endif %}"
   - "{% if not use_sse %}app/utils/sse_utils.py{% endif %}"
   - "{% if not use_sse %}app/utils/log_capture.py{% endif %}"

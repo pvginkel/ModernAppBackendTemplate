@@ -3,30 +3,35 @@
 These tests validate end-to-end behavior with a real SSE Gateway subprocess,
 verifying the callback-based architecture works correctly with actual HTTP
 communication between Python backend and SSE Gateway.
+
+All clients connect to the unified /api/sse/stream?request_id=<id> endpoint.
+Task events are broadcast to all connections, so the task_id is used as the
+request_id to receive events for a specific task.
 """
 
 import time
 
-import pytest
 import requests
 
 from tests.integration.sse_client_helper import SSEClient
 
 
-@pytest.mark.integration
 class TestSSEGatewayTasks:
-    """Integration tests for /api/sse/tasks endpoint via SSE Gateway."""
+    """Integration tests for task events via SSE Gateway."""
 
     def test_task_progress_events_received_via_gateway(
         self, sse_server: tuple[str, any], sse_gateway_server: str
     ):
         """Test that progress_update events are received through SSE Gateway."""
         server_url, _ = sse_server
+
+        # Use enough steps and delay so the task is still running when the
+        # SSE client finishes connecting through the gateway.
         resp = requests.post(
             f"{server_url}/api/testing/tasks/start",
             json={
                 "task_type": "demo_task",
-                "params": {"steps": 3, "delay": 0.05}
+                "params": {"steps": 5, "delay": 0.5}
             },
             timeout=5.0
         )
@@ -36,8 +41,8 @@ class TestSSEGatewayTasks:
         client = SSEClient(f"{sse_gateway_server}/api/sse/stream?request_id={task_id}", strict=True)
         events = []
 
-        timeout = time.perf_counter() + 3.0
-        for event in client.connect(timeout=3.0):
+        timeout = time.perf_counter() + 5.0
+        for event in client.connect(timeout=5.0):
             events.append(event)
             if len(events) >= 5:
                 break
@@ -101,29 +106,6 @@ class TestSSEGatewayTasks:
         connection_close_events = [e for e in events if e["event"] == "connection_close"]
         assert len(connection_close_events) == 0, "Connection should remain open after task completion"
 
-    def test_task_not_found_returns_error_and_closes(
-        self, sse_gateway_server: str
-    ):
-        """Test that non-existent task returns error event and closes connection."""
-        task_id = "nonexistent-task-id"
-
-        client = SSEClient(f"{sse_gateway_server}/api/sse/tasks?task_id={task_id}", strict=True)
-        events = []
-
-        for event in client.connect(timeout=10.0):
-            events.append(event)
-            if event["event"] == "connection_close":
-                break
-
-        assert len(events) >= 2
-
-        error_events = [e for e in events if e["event"] == "error"]
-        assert len(error_events) == 1
-        assert "Task not found" in error_events[0]["data"]["error"]
-
-        assert events[-1]["event"] == "connection_close"
-        assert events[-1]["data"]["reason"] == "task_not_found"
-
     def test_client_disconnect_triggers_callback(
         self, sse_server: tuple[str, any], sse_gateway_server: str
     ):
@@ -140,7 +122,7 @@ class TestSSEGatewayTasks:
         assert resp.status_code == 200
         task_id = resp.json()["task_id"]
 
-        client = SSEClient(f"{sse_gateway_server}/api/sse/tasks?task_id={task_id}", strict=True)
+        client = SSEClient(f"{sse_gateway_server}/api/sse/stream?request_id={task_id}", strict=True)
         events = []
 
         for event in client.connect(timeout=10.0):
@@ -155,7 +137,7 @@ class TestSSEGatewayTasks:
     def test_multiple_clients_connect_old_client_disconnected(
         self, sse_server: tuple[str, any], sse_gateway_server: str
     ):
-        """Test that when multiple clients connect to same task, old client is disconnected."""
+        """Test that when multiple clients connect with same request_id, old client is disconnected."""
         server_url, _ = sse_server
         resp = requests.post(
             f"{server_url}/api/testing/tasks/start",
@@ -168,7 +150,7 @@ class TestSSEGatewayTasks:
         assert resp.status_code == 200
         task_id = resp.json()["task_id"]
 
-        client1 = SSEClient(f"{sse_gateway_server}/api/sse/tasks?task_id={task_id}", strict=True)
+        client1 = SSEClient(f"{sse_gateway_server}/api/sse/stream?request_id={task_id}", strict=True)
         events1 = []
 
         gen1 = client1.connect(timeout=10.0)
@@ -176,12 +158,16 @@ class TestSSEGatewayTasks:
 
         time.sleep(0.2)
 
-        client2 = SSEClient(f"{sse_gateway_server}/api/sse/tasks?task_id={task_id}", strict=True)
+        client2 = SSEClient(f"{sse_gateway_server}/api/sse/stream?request_id={task_id}", strict=True)
         events2 = []
 
+        timeout = time.perf_counter() + 5.0
         for event in client2.connect(timeout=10.0):
             events2.append(event)
-            if event["event"] == "connection_close":
+            task_events = [e for e in events2 if e["event"] == "task_event"]
+            if len(task_events) >= 1:
+                break
+            if time.perf_counter() > timeout:
                 break
 
         assert len(events2) >= 1

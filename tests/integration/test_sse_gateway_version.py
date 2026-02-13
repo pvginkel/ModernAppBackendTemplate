@@ -8,15 +8,13 @@ before connection are flushed on connect.
 import time
 import uuid
 
-import pytest
 import requests
 
 from tests.integration.sse_client_helper import SSEClient
 
 
-@pytest.mark.integration
 class TestSSEGatewayVersion:
-    """Integration tests for /api/sse/utils/version endpoint via SSE Gateway."""
+    """Integration tests for version events via SSE Gateway."""
 
     def test_pending_events_flushed_on_connect(
         self, sse_server: tuple[str, any], sse_gateway_server: str
@@ -119,7 +117,7 @@ class TestSSEGatewayVersion:
         time.sleep(0.1)
 
         client = SSEClient(
-            f"{sse_gateway_server}/api/sse/utils/version?request_id={request_id}",
+            f"{sse_gateway_server}/api/sse/stream?request_id={request_id}",
             strict=True
         )
         events = []
@@ -152,7 +150,7 @@ class TestSSEGatewayVersion:
         time.sleep(0.1)
 
         client1 = SSEClient(
-            f"{sse_gateway_server}/api/sse/utils/version?request_id={request_id}",
+            f"{sse_gateway_server}/api/sse/stream?request_id={request_id}",
             strict=True
         )
         events1 = []
@@ -164,7 +162,7 @@ class TestSSEGatewayVersion:
         time.sleep(0.2)
 
         client2 = SSEClient(
-            f"{sse_gateway_server}/api/sse/utils/version?request_id={request_id}",
+            f"{sse_gateway_server}/api/sse/stream?request_id={request_id}",
             strict=True
         )
         events2 = []
