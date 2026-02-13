@@ -88,7 +88,7 @@ Infrastructure code. Developers should not edit these. See `copier_approach.md` 
 |------|----------|
 | `use_database` | SQLAlchemy, Alembic, migrations, pool diagnostics, diagnostics service |
 | `use_oidc` | OIDC authentication (BFF pattern with JWT cookies) |
-| `use_s3` | S3/MinIO storage, CAS endpoints, image processing |
+| `use_s3` | S3 storage, CAS endpoints, image processing |
 | `use_sse` | Server-Sent Events via SSE Gateway |
 
 ## Common Patterns

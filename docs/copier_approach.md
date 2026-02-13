@@ -158,7 +158,7 @@ All infrastructure code. Developers should not edit these:
 | `backend_port` | int | 5000 | Server port for Dockerfile EXPOSE and run.py default |
 | `use_database` | bool | true | SQLAlchemy + Alembic |
 | `use_oidc` | bool | false | OIDC authentication |
-| `use_s3` | bool | false | S3/MinIO storage |
+| `use_s3` | bool | false | S3 storage |
 | `use_sse` | bool | false | Server-Sent Events |
 
 Note: `workspace_name` was removed — `repo_url` and `image_name` are the correct independent parameters.
@@ -318,7 +318,7 @@ Files were made Jinja just because they had a project name reference or a single
 `config.py`, `cli.py`, `conftest.py`, `pyproject.toml` — all template-owned but apps need to add their own content. Solution: split ownership (separate AppSettings, CLI hooks, conftest_infrastructure import, `_skip_if_exists` for pyproject.toml).
 
 ### S3 availability as a global blocker
-`pytest_configure` in conftest hard-failed all tests if MinIO wasn't reachable. Domain tests that don't need S3 couldn't run. Solution: `require_s3` fixture that skips individual tests.
+`pytest_configure` in conftest hard-failed all tests if S3 wasn't reachable. Domain tests that don't need S3 couldn't run. Solution: `require_s3` fixture that skips individual tests.
 
 ### ConnectionManager dependency chain
 `TaskService` -> `SSEConnectionManager` -> `sse_gateway_schema`. When SSE files were excluded, the dependency chain broke. Solution: always include SSEConnectionManager and its schema.
