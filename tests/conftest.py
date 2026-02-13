@@ -474,11 +474,11 @@ def sse_server(
     app = create_app(settings, app_settings=app_settings)
 
     # Mock frontend version service to avoid external frontend dependency
-    version_json = '{"version": "test-1.0.0", "environment": "test", "git_commit": "abc123"}'
+    version_data = {"version": "test-1.0.0", "environment": "test", "git_commit": "abc123"}
     version_mock = patch.object(
         app.container.frontend_version_service(),
-        "fetch_frontend_version",
-        return_value=version_json,
+        "_fetch_frontend_version",
+        return_value=version_data,
     )
     version_mock.start()
 

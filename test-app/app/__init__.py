@@ -159,6 +159,9 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.api.testing_logs import testing_logs_bp
     app.register_blueprint(testing_logs_bp)
 
+    from app.api.testing_sse import testing_sse_bp
+    app.register_blueprint(testing_sse_bp)
+
     # Register SSE Gateway callback blueprint
     from app.api.sse import sse_bp
     app.register_blueprint(sse_bp)
