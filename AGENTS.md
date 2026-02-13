@@ -41,41 +41,14 @@ Before making changes, read these documents:
 `test-app-domain/` has hand-written domain files (Item model, CRUD API, migration, tests) that get copied into `test-app/` after Copier generation. These files fill in the `_skip_if_exists` scaffolds with a real working domain.
 
 ### 3. Always Regenerate After Template Changes
-After any change to `template/` or `copier.yml`:
+After any change to `template/` or `copier.yml`, run the regeneration script:
 
 ```bash
 cd /work/ModernAppTemplate/backend
-rm -rf test-app
-poetry run copier copy . test-app --trust \
-  -d project_name=test-app \
-  -d project_description="Test application" \
-  -d author_name="Test Author" \
-  -d author_email="test@example.com" \
-  -d repo_url="https://github.com/test/test-app.git" \
-  -d image_name="registry:5000/test-app" \
-  -d backend_port=5000 \
-  -d use_database=true \
-  -d use_oidc=true \
-  -d use_s3=true \
-  -d use_sse=true
-
-# Copy domain files (overwrite scaffolds)
-cp test-app-domain/app/startup.py test-app/app/startup.py
-cp test-app-domain/app/services/container.py test-app/app/services/container.py
-cp test-app-domain/app/exceptions.py test-app/app/exceptions.py
-cp test-app-domain/app/consts.py test-app/app/consts.py
-cp test-app-domain/app/app_config.py test-app/app/app_config.py
-cp -r test-app-domain/app/models/* test-app/app/models/
-cp test-app-domain/app/schemas/item_schema.py test-app/app/schemas/
-cp test-app-domain/app/services/item_service.py test-app/app/services/
-cp test-app-domain/app/api/items.py test-app/app/api/
-cp -r test-app-domain/tests/* test-app/tests/
-mkdir -p test-app/alembic/versions
-cp test-app-domain/alembic/versions/001_create_items.py test-app/alembic/versions/
-echo "# Test App" > test-app/README.md
-
-cd test-app && poetry install
+bash regen.sh
 ```
+
+This script removes old test-app, runs `copier copy`, copies domain files from `test-app-domain/`, copies `.env.test`, and runs `poetry install`.
 
 ### 4. Run Both Test Suites
 ```bash
@@ -157,6 +130,21 @@ All template changes must be documented in `changelog.md`. Each entry includes:
 3. Migration steps for downstream apps
 
 Apps track which template version they're on via `_commit` in `.copier-answers.yml`.
+
+## Known Gotchas
+
+### Pytest Conftest Discovery
+Both `tests/conftest.py` (mother project) and `test-app/tests/conftest.py` (domain) share the module name `tests.conftest`. This means:
+
+- **You cannot run both test suites in a single pytest invocation.** Doing so causes `ImportPathMismatchError` because pytest finds two files claiming to be `tests.conftest`.
+- **Always run them separately:**
+  ```bash
+  cd test-app
+  python -m pytest ../tests/ -v      # Mother project (infrastructure)
+  python -m pytest tests/ -v          # Domain (Items CRUD)
+  ```
+- Both conftest files re-export from `tests.conftest_infrastructure` (the generated infrastructure fixtures in test-app). This works because tests run from inside `test-app/`, so `tests.conftest_infrastructure` resolves to `test-app/tests/conftest_infrastructure.py`.
+- Do NOT duplicate fixtures in conftest files. Import from `conftest_infrastructure` and add domain-specific fixtures only.
 
 ## Commit Guidelines
 
