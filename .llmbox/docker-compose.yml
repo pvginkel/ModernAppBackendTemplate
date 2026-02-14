@@ -18,16 +18,11 @@ services:
       - ${HOME}/.cache:/home/ubuntu/.cache:rw
       - ${HOME}/.happy:/home/ubuntu/.happy:rw
       - ../../ModernAppTemplate/backend:/work/ModernAppTemplate/backend:rw
-      # - ../../ModernAppTemplate/backend/.git:/work/ModernAppTemplate/backend/.git:ro
       - ../../ElectronicsInventory/backend:/work/ElectronicsInventory/backend:rw
-      # - ../../ElectronicsInventory/backend/.git:/work/ElectronicsInventory/backend/.git:ro
       - ../../SSEGateway:/work/SSEGateway:rw
-      - ../../SSEGateway/.git:/work/SSEGateway/.git:ro
       - ../../IoTSupport/backend:/work/IoTSupport/backend:rw
-      # - ../../IoTSupport/backend/.git:/work/IoTSupport/backend/.git:ro
       - ../../ZigbeeControl/backend:/work/ZigbeeControl/backend:rw
-      - ../../ZigbeeControl/backend/.git:/work/ZigbeeControl/backend/.git:ro
+      - ../../ZigbeeControl-2/backend:/work/ZigbeeControl/backend-new:rw
       - ../../DHCPApp/backend:/work/DHCPApp/backend:rw
-      - ../../DHCPApp/backend/.git:/work/DHCPApp/backend/.git:ro
     # Required for Chromium
     shm_size: 1G
