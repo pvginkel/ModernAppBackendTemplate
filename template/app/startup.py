@@ -13,12 +13,8 @@ Hook points called by CLI command handlers:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+import click
 from flask import Blueprint, Flask
-
-if TYPE_CHECKING:
-    import click
 
 from app.services.container import ServiceContainer
 

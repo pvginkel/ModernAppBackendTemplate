@@ -1,0 +1,17 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.2
+_src_path: .
+author_email: test@example.com
+author_name: Test Author
+backend_port: 5000
+database_name: test-app
+image_name: registry:5000/test-app
+project_description: Test application
+project_name: test-app
+repo_url: https://github.com/test/test-app.git
+s3_bucket_name: test-app-attachments
+testing_port_offset: 10
+use_database: true
+use_oidc: true
+use_s3: true
+use_sse: true
