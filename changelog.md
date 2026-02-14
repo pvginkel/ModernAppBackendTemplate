@@ -8,6 +8,46 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-02-14
+
+### Fix auth/self endpoint not extracting token from request
+
+**What changed:** The `/api/auth/self` endpoint is decorated with `@public` (to handle its own auth logic), but this meant the `before_request` OIDC hook skipped it entirely. When OIDC is enabled and a user has a valid token cookie, the endpoint would fail with "No valid token provided" because `get_auth_context()` returned `None`.
+
+Fixed by injecting `AuthService` and falling back to manually extracting and validating the token from the request when `auth_context` is not set by the hook.
+
+Files changed:
+- `template/app/api/auth.py` — Added `auth_service` DI parameter; added fallback token extraction via `extract_token_from_request()`
+
+**Migration steps:**
+1. Run `copier update` — this file is template-maintained and will be updated automatically
+
+### Upgrade ruff to 0.11+ and modernize Python syntax
+
+**What changed:** Upgraded ruff from `^0.1.0` to `^0.11.0` to support `py313` target version. Fixed all new lint findings:
+
+- Moved ruff config to `[tool.ruff.lint]` section (old top-level format deprecated)
+- `str, Enum` → `StrEnum` (UP042) in `task_schema.py`, `lifecycle_coordinator.py`
+- `Generator[X, None, None]` → `Generator[X]` (UP043) in `conftest_infrastructure.py`, `sse_utils.py`
+- `TypeVar` → PEP 695 type parameters (UP047) in `request_parsing.py`
+- Quoted type annotations → unquoted (UP037) in `alembic/env.py`
+- Import sorting fixes (I001) in `database.py`
+
+Files changed:
+- `template/pyproject.toml.jinja` — ruff `^0.11.0`, `[tool.ruff.lint]` config format
+- `template/app/schemas/task_schema.py` — `StrEnum`
+- `template/app/utils/lifecycle_coordinator.py` — `StrEnum`
+- `template/app/utils/request_parsing.py` — PEP 695 type params
+- `template/app/utils/sse_utils.py` — simplified `Generator` type
+- `template/app/database.py` — import order
+- `template/alembic/env.py` — unquoted annotation
+- `template/tests/conftest_infrastructure.py.jinja` — simplified `Generator` types
+
+**Migration steps:**
+1. Run `copier update` — template-maintained files will be updated automatically
+2. After update, run `ruff check --fix .` to auto-fix any remaining issues in app-owned files
+3. Manually fix any `str, Enum` → `StrEnum` classes in app-owned code
+
 ## 2026-02-13
 
 ### Add service layer files (infrastructure services and DI container scaffold)

@@ -44,6 +44,7 @@ class UserInfoResponseSchema(BaseModel):
 @api.validate(resp=SpectreeResponse(HTTP_200=UserInfoResponseSchema))
 @inject
 def get_current_user(
+    auth_service: AuthService = Provide[ServiceContainer.auth_service],
     testing_service: TestingService = Provide[ServiceContainer.testing_service],
     config: Settings = Provide[ServiceContainer.config],
 ) -> tuple[dict[str, Any], int]:
@@ -99,10 +100,18 @@ def get_current_user(
             roles=["admin"],
         ).model_dump(), 200
 
-    # OIDC enabled: try auth_context (set by before_request hook)
+    # OIDC enabled: try auth_context (set by before_request hook).
+    # Since this endpoint is @public, the hook skips it, so we fall back
+    # to manually extracting and validating the token from the request.
     auth_context = get_auth_context()
     if not auth_context:
-        raise AuthenticationException("No valid token provided")
+        from app.utils.auth import extract_token_from_request
+
+        token = extract_token_from_request(config)
+        if not token:
+            raise AuthenticationException("No valid token provided")
+
+        auth_context = auth_service.validate_token(token)
 
     # Return user information
     user_info = UserInfoResponseSchema(

@@ -1,8 +1,6 @@
 """Tests for error handling and exception hierarchy."""
 
-import json
 
-from flask import Flask
 from flask.testing import FlaskClient
 
 from app.exceptions import (

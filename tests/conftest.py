@@ -154,7 +154,7 @@ def test_app_settings() -> AppSettings:
 
 
 @pytest.fixture(scope="session")
-def template_connection() -> Generator[sqlite3.Connection, None, None]:
+def template_connection() -> Generator[sqlite3.Connection]:
     """Create a template SQLite database once and apply migrations."""
     conn = sqlite3.connect(":memory:", check_same_thread=False)
 
@@ -184,7 +184,7 @@ def app(
     test_settings: Settings,
     test_app_settings: AppSettings,
     template_connection: sqlite3.Connection,
-) -> Generator[Flask, None, None]:
+) -> Generator[Flask]:
     """Create Flask app for testing using a fresh copy of the template database."""
     clone_conn = sqlite3.connect(":memory:", check_same_thread=False)
     template_connection.backup(clone_conn)
@@ -249,7 +249,7 @@ def container(app: Flask):
 
 
 @pytest.fixture
-def session(container: ServiceContainer) -> Generator[Session, None, None]:
+def session(container: ServiceContainer) -> Generator[Session]:
     """Create a new database session for a test."""
     session = container.db_session()
 
@@ -375,7 +375,7 @@ def oidc_app(
     template_connection: sqlite3.Connection,
     mock_oidc_discovery: dict[str, Any],
     generate_test_jwt: Any,
-) -> Generator[Flask, None, None]:
+) -> Generator[Flask]:
     """Create Flask app with OIDC enabled, using the standard template clone pattern."""
     clone_conn = sqlite3.connect(":memory:", check_same_thread=False)
     template_connection.backup(clone_conn)
@@ -447,7 +447,7 @@ def _find_free_port() -> int:
 @pytest.fixture(scope="session")
 def sse_server(
     template_connection: sqlite3.Connection,
-) -> Generator[tuple[str, Any], None, None]:
+) -> Generator[tuple[str, Any]]:
     """Start a real Flask development server for SSE integration tests.
 
     Returns tuple of (base_url, app) where base_url is like http://localhost:5001.
@@ -529,7 +529,7 @@ def sse_server(
 
 @pytest.fixture
 def background_task_runner() -> (
-    Generator[Callable[[Callable[[], Any]], Any], None, None]
+    Generator[Callable[[Callable[[], Any]], Any]]
 ):
     """Provide a helper to run background tasks concurrently with SSE tests."""
     threads: list[threading.Thread] = []
@@ -563,7 +563,7 @@ def sse_client_factory(sse_server: tuple[str, Any]):
 @pytest.fixture(scope="session")
 def sse_gateway_server(
     sse_server: tuple[str, Any],
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """Start SSE Gateway subprocess for integration tests.
 
     Returns the base URL for the gateway (e.g., http://localhost:3001).

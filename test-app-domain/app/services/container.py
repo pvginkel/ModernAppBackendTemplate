@@ -7,7 +7,6 @@ from app.app_config import AppSettings
 from app.config import Settings
 from app.services.auth_service import AuthService
 from app.services.cas_image_service import CasImageService
-from app.services.testing_service import TestingService
 from app.services.frontend_version_service import FrontendVersionService
 from app.services.health_service import HealthService
 from app.services.item_service import ItemService
@@ -16,6 +15,7 @@ from app.services.oidc_client_service import OidcClientService
 from app.services.s3_service import S3Service
 from app.services.sse_connection_manager import SSEConnectionManager
 from app.services.task_service import TaskService
+from app.services.testing_service import TestingService
 from app.utils.lifecycle_coordinator import LifecycleCoordinator
 from app.utils.temp_file_manager import TempFileManager
 

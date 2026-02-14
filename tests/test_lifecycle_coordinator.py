@@ -3,7 +3,7 @@
 import signal
 import threading
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.utils.lifecycle_coordinator import LifecycleCoordinator, LifecycleEvent
 from tests.testing_utils import TestLifecycleCoordinator

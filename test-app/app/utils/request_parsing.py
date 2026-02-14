@@ -18,7 +18,7 @@ def parse_bool_query_param(raw_value: str | None, *, default: bool = False) -> b
     return raw_value.lower() in _TRUE_VALUES
 
 
-def parse_enum_list_query_param(
+def parse_enum_list_query_param[EnumType: Enum](
     raw_values: Sequence[str] | None,
     enum_cls: type[EnumType],
 ) -> list[EnumType]:

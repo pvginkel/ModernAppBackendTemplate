@@ -83,7 +83,7 @@ def run_migrations_online() -> None:
             context.run_migrations()
         return
 
-    connectable: "Engine" = engine_from_config(
+    connectable: Engine = engine_from_config(
         configuration or {},
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,

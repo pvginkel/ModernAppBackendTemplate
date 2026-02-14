@@ -6,7 +6,6 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
 
 from app.utils.temp_file_manager import CachedContent, TempFileManager
 from tests.testing_utils import StubLifecycleCoordinator

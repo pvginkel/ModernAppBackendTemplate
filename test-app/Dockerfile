@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS build
+FROM python:3.13-slim AS build
 
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_VIRTUALENVS_IN_PROJECT=1
@@ -36,7 +36,7 @@ COPY app /app/app
 
 # Now let's build the runtime image from the builder.
 #   We'll just copy the env and the PATH reference.
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends tini netcat-openbsd \

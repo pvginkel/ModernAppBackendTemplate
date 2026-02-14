@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task execution status."""
     PENDING = "pending"
     RUNNING = "running"
@@ -14,7 +14,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class TaskEventType(str, Enum):
+class TaskEventType(StrEnum):
     """Types of task events sent via SSE."""
     TASK_STARTED = "task_started"
     PROGRESS_UPDATE = "progress_update"

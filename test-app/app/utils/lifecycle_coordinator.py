@@ -6,7 +6,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 
 from prometheus_client import Gauge, Histogram
 
@@ -24,7 +24,7 @@ GRACEFUL_SHUTDOWN_DURATION_SECONDS = Histogram(
 )
 
 
-class LifecycleEvent(str, Enum):
+class LifecycleEvent(StrEnum):
     STARTUP = "startup"
     PREPARE_SHUTDOWN = "prepare-shutdown"
     SHUTDOWN = "shutdown"

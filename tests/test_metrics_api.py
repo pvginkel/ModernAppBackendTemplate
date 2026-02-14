@@ -1,6 +1,5 @@
 """Tests for metrics API endpoint."""
 
-from flask import Flask
 
 
 class TestMetricsAPI:

@@ -29,7 +29,7 @@ def format_sse_event(event: str, data: dict[str, Any] | str, correlation_id: str
     return f"event: {event}\ndata: {data}\n\n"
 
 
-def create_sse_response(generator: Generator[str, None, None]) -> Response:
+def create_sse_response(generator: Generator[str]) -> Response:
     """Create Response with standard SSE headers.
 
     Args:

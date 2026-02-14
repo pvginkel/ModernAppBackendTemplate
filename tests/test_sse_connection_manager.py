@@ -2,9 +2,9 @@
 
 from unittest.mock import Mock, patch
 
-from app.services.sse_connection_manager import SSEConnectionManager
-
 import pytest
+
+from app.services.sse_connection_manager import SSEConnectionManager
 
 
 @pytest.fixture

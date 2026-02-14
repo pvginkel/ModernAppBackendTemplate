@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from enum import Enum
-from typing import TypeVar
 
 _TRUE_VALUES = {"true", "1", "yes", "on"}
-
-EnumType = TypeVar("EnumType", bound=Enum)
 
 
 def parse_bool_query_param(raw_value: str | None, *, default: bool = False) -> bool:
@@ -18,7 +15,7 @@ def parse_bool_query_param(raw_value: str | None, *, default: bool = False) -> b
     return raw_value.lower() in _TRUE_VALUES
 
 
-def parse_enum_list_query_param(
+def parse_enum_list_query_param[EnumType: Enum](
     raw_values: Sequence[str] | None,
     enum_cls: type[EnumType],
 ) -> list[EnumType]:

@@ -1,6 +1,5 @@
 """Tests for Items CRUD API."""
 
-import pytest
 from flask.testing import FlaskClient
 
 
