@@ -5,8 +5,7 @@ This is a Copier-based backend template that generates self-contained Flask back
 ## Sandbox Environment
 
 - This repository is bind-mounted into `/work/ModernAppTemplate/backend` inside a container.
-- The `.git` directory is mapped read-only, so staging or committing must happen outside the sandbox.
-- When you need to commit, provide the user with the exact commands to run.
+- Git operations (staging, committing, tagging) work normally inside the container.
 - The container includes poetry and the standard Python toolchain.
 
 ## Project Structure
@@ -148,13 +147,12 @@ Both `tests/conftest.py` (mother project) and `test-app/tests/conftest.py` (doma
 
 ## Commit Guidelines
 
-Since `.git` is read-only in the sandbox:
 1. Regenerate test-app and run full test suite
-2. Provide the user with exact git commands to run outside the container
-3. Stage both template changes and regenerated test-app
+2. Stage both template changes and regenerated test-app
+3. Commit with a descriptive message
 
 ## Updating Downstream Apps
 
 When template changes need to propagate to a downstream app (e.g., EI's `backend-new/`), **always use `copier update`**. Never manually copy template-owned files into the target app — this bypasses Copier's conflict resolution, skips `_skip_if_exists` protections, and creates drift that's hard to track.
 
-If `copier update` fails because `.git` is read-only or `.copier-answers.yml` is not committed, **stop and tell the user** you need git write access. Do not work around it by manually copying files.
+If `copier update` fails because `.copier-answers.yml` is not committed, commit it first. Never manually copy template-owned files — always use `copier update`.
