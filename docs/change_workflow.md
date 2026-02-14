@@ -268,25 +268,91 @@ Added to changelog.md: Yes/No
 <Any special considerations>
 ```
 
-### 9. Sync to Downstream Apps (Optional)
+### 9. Tag the Release
 
-If changes need to be applied to real apps:
+After all template tests pass and the changelog is updated, create a new version tag:
 
-**For pure Python files (no Jinja):**
 ```bash
-# Compare
-diff template/common/auth/oidc.py /work/ZigbeeControl/backend/common/auth/oidc.py
+# Find the latest tag
+git tag --list --sort=-v:refname | head -1
 
-# Copy if appropriate
-cp template/common/auth/oidc.py /work/ZigbeeControl/backend/common/auth/oidc.py
+# Create the next tag (bump by 0.1)
+git tag v0.X
 ```
 
-**For Jinja files:**
-Manual adaptation is required — the template variables need to be resolved for each app's configuration.
+Tags are required for `copier update` to work — downstream apps reference the template version via the `_commit` field in `.copier-answers.yml`.
 
-**After syncing:**
-1. Run the app's test suite
-2. Update the app's `.copier-answers.yml` `_commit` field to the template's HEAD
+### 10. Update Downstream Apps
+
+Use `copier update` to propagate changes to all downstream apps. **Never manually copy template-owned files** — this bypasses Copier's conflict resolution and `_skip_if_exists` protections.
+
+```bash
+cd /work/<ProjectName>/backend
+poetry run copier update --trust --defaults
+```
+
+After the update:
+
+1. **Fix new ruff findings** in app-owned files (copier only updates template-owned files):
+   ```bash
+   ruff check --fix --unsafe-fixes .
+   ```
+2. **Update `pyproject.toml`** if the template changed ruff version or config format (this file is `_skip_if_exists`, so copier won't touch it)
+3. **Run the app's test suite** to verify nothing broke
+4. **Check `ruff check .`** passes clean
+
+Repeat for each downstream app (IoTSupport, ElectronicsInventory, etc.).
+
+## Upstreaming a Fix from a Downstream App
+
+When a bug is discovered and fixed in a downstream app (e.g., IoTSupport) and the fix is in template-owned code, it needs to be upstreamed to the template and then propagated to all other downstream apps.
+
+### Steps
+
+1. **Identify the fix**: Find the commit in the downstream app that fixes the issue. Verify it touches template-owned files (not app-specific code).
+
+2. **Apply to the template**: Port the fix to the corresponding file(s) in `template/`. The downstream app may have app-specific imports or services — adapt as needed for the generic template.
+
+3. **Regenerate and test**: Run `bash regen.sh`, then run both test suites:
+   ```bash
+   cd test-app
+   python -m pytest ../tests/ -v      # Mother project tests
+   python -m pytest tests/ -v          # Domain tests
+   ruff check ../template/ .           # Lint check
+   ```
+
+4. **Update the changelog**: Add an entry in `changelog.md` describing the fix and migration steps.
+
+5. **Commit and tag**: Commit the template changes and create a new version tag (bump by 0.1 from the latest tag).
+
+6. **Update all downstream apps**: Run `copier update --trust --defaults` in each downstream project, fix any ruff findings, update `pyproject.toml` if needed, and run their test suites.
+
+### Example
+
+```
+# 1. Check the fix in the downstream app
+cd /work/IoTSupport/backend
+git show HEAD -- app/api/auth.py
+
+# 2. Apply to template
+# Edit template/app/api/auth.py with the equivalent fix
+
+# 3. Regenerate and test
+cd /work/ModernAppTemplate/backend
+bash regen.sh
+cd test-app && python -m pytest ../tests/ -v && python -m pytest tests/ -v
+
+# 4. Update changelog.md
+
+# 5. Commit and tag
+git add . && git commit -m "Fix auth/self endpoint"
+git tag v0.X
+
+# 6. Update downstream apps
+cd /work/IoTSupport/backend && copier update --trust --defaults
+cd /work/ElectronicsInventory/backend && copier update --trust --defaults
+# Run tests in each...
+```
 
 ## Quality Standards
 
