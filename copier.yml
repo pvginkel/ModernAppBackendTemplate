@@ -102,6 +102,8 @@ _exclude:
   # OIDC
   - "{% if not use_oidc %}app/api/auth.py{% endif %}"
   - "{% if not use_oidc %}app/api/oidc_hooks.py{% endif %}"
+  - "{% if not use_oidc %}app/api/testing_auth.py{% endif %}"
+  - "{% if not use_oidc %}app/schemas/testing_auth.py{% endif %}"
   - "{% if not use_oidc %}app/services/auth_service.py{% endif %}"
   - "{% if not use_oidc %}app/services/oidc_client_service.py{% endif %}"
   - "{% if not use_oidc %}app/utils/auth.py{% endif %}"
@@ -114,7 +116,6 @@ _exclude:
   - "{% if not use_s3 %}app/utils/image_processing.py{% endif %}"
   - "{% if not use_s3 %}app/utils/mime_handling.py{% endif %}"
   - "{% if not use_s3 %}app/schemas/upload_document.py{% endif %}"
-  - "{% if not use_s3 %}app/services/testing_service.py{% endif %}"
   - "{% if not use_s3 %}app/api/testing_content.py{% endif %}"
   - "{% if not use_s3 %}app/schemas/testing_content.py{% endif %}"
   - "{% if not use_s3 %}app/assets{% endif %}"

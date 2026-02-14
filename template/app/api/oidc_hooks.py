@@ -9,6 +9,7 @@ from app.config import Settings
 from app.services.auth_service import AuthService
 from app.services.container import ServiceContainer
 from app.services.oidc_client_service import OidcClientService
+from app.services.testing_service import TestingService
 from app.utils.auth import (
     authenticate_request,
     get_cookie_secure,
@@ -31,6 +32,7 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
     def before_request_authentication(
         auth_service: AuthService = Provide[ServiceContainer.auth_service],
         oidc_client_service: OidcClientService = Provide[ServiceContainer.oidc_client_service],
+        testing_service: TestingService = Provide[ServiceContainer.testing_service],
         config: Settings = Provide[ServiceContainer.config],
     ) -> None | tuple[dict[str, str], int]:
         """Authenticate all requests to /api endpoints before processing.
@@ -41,16 +43,19 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
         attempt to refresh the tokens automatically.
 
         Authentication is skipped if:
-        - OIDC_ENABLED is False
         - The endpoint is marked with @public decorator
+        - In testing mode with a valid test session
+        - OIDC_ENABLED is False
 
         Returns:
             None if authentication succeeds or is skipped
             Error response tuple if authentication fails
         """
-        from flask import current_app
+        from flask import current_app, g
 
         from app.exceptions import AuthenticationException, AuthorizationException
+        from app.services.auth_service import AuthContext
+        from app.utils.auth import check_authorization
 
         # Get the actual view function from Flask's view_functions
         endpoint = request.endpoint
@@ -60,6 +65,27 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
         if actual_func and getattr(actual_func, "is_public", False):
             logger.debug("Public endpoint - skipping authentication")
             return None
+
+        # In testing mode, check for test session token (bypasses OIDC)
+        if config.is_testing:
+            token = request.cookies.get(config.oidc_cookie_name)
+            if token:
+                test_session = testing_service.get_session(token)
+                if test_session:
+                    logger.debug("Test session authenticated: subject=%s", test_session.subject)
+                    auth_context = AuthContext(
+                        subject=test_session.subject,
+                        email=test_session.email,
+                        name=test_session.name,
+                        roles=set(test_session.roles),
+                    )
+                    g.auth_context = auth_context
+                    try:
+                        check_authorization(auth_context, actual_func)
+                        return None
+                    except AuthorizationException as e:
+                        logger.warning("Authorization failed: %s", str(e))
+                        return {"error": str(e)}, 403
 
         # Skip authentication if OIDC is disabled
         if not config.oidc_enabled:

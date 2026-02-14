@@ -13,6 +13,7 @@ from app.exceptions import AuthenticationException, ValidationException
 from app.services.auth_service import AuthService
 from app.services.container import ServiceContainer
 from app.services.oidc_client_service import OidcClientService
+from app.services.testing_service import TestingService
 from app.utils.auth import (
     deserialize_auth_state,
     get_auth_context,
@@ -39,23 +40,56 @@ class UserInfoResponseSchema(BaseModel):
 
 
 @auth_bp.route("/self", methods=["GET"])
+@public
 @api.validate(resp=SpectreeResponse(HTTP_200=UserInfoResponseSchema))
 @inject
 def get_current_user(
+    testing_service: TestingService = Provide[ServiceContainer.testing_service],
     config: Settings = Provide[ServiceContainer.config],
 ) -> tuple[dict[str, Any], int]:
     """Get current authenticated user information.
 
-    Returns user information from the validated JWT token in the cookie.
-
-    This endpoint is NOT @public. The before_request hook handles auth:
-    - When OIDC disabled: hook passes through, we return default local-user
-    - When OIDC enabled: hook validates token, sets g.auth_context
+    This endpoint is @public because it handles authentication explicitly:
+    in testing mode it checks test sessions and forced errors; otherwise
+    it validates tokens or returns a default local-user when OIDC is off.
 
     Returns:
-        200: User information from validated token
-        401: No valid token provided or token invalid (via before_request hook)
+        200: User information from validated token or test session
+        401: No valid token provided or token invalid
     """
+    # In testing mode, handle test sessions and forced errors
+    if config.is_testing:
+        # Check for forced errors first (single-shot)
+        forced_error = testing_service.consume_forced_auth_error()
+        if forced_error:
+            from flask import jsonify
+
+            logger.info("Returning forced auth error: status=%d", forced_error)
+            return jsonify({
+                "error": f"Simulated error for testing (status {forced_error})",
+                "message": "Simulated error for testing",
+            }), forced_error
+
+        # Check for test sessions
+        token = request.cookies.get(config.oidc_cookie_name)
+        if token and token.startswith("test-session-"):
+            test_session = testing_service.get_session(token)
+            if test_session:
+                user_info = UserInfoResponseSchema(
+                    subject=test_session.subject,
+                    email=test_session.email,
+                    name=test_session.name,
+                    roles=sorted(test_session.roles),
+                )
+                logger.info(
+                    "Returned test session user info for subject=%s",
+                    test_session.subject,
+                )
+                return user_info.model_dump(), 200
+
+        # No test session — fall through to OIDC-enabled / disabled logic
+        # so existing tests without explicit sessions still get local-user.
+
     # When OIDC is disabled, return a default "local" user
     if not config.oidc_enabled:
         return UserInfoResponseSchema(
@@ -65,8 +99,7 @@ def get_current_user(
             roles=["admin"],
         ).model_dump(), 200
 
-    # OIDC enabled: auth_context is guaranteed to be set by before_request hook
-    # (if the token was invalid/missing, the hook returned 401 before we get here)
+    # OIDC enabled: try auth_context (set by before_request hook)
     auth_context = get_auth_context()
     if not auth_context:
         raise AuthenticationException("No valid token provided")
