@@ -8,6 +8,33 @@ This is a Copier-based backend template that generates self-contained Flask back
 - Git operations (staging, committing, tagging) work normally inside the container.
 - The container includes poetry and the standard Python toolchain.
 
+## Poetry Virtual Environments
+
+Each project in the container has its own Poetry virtualenv. **Always use `poetry run`** to run commands — never bare `python` or `pytest`, as the system `python` may resolve to a different project's venv or to no venv at all.
+
+```bash
+# Correct — uses the project's own venv:
+cd /work/IoTSupport/backend && poetry run pytest tests/ -v
+
+# WRONG — may use a different project's venv or system Python:
+cd /work/IoTSupport/backend && python -m pytest tests/ -v
+```
+
+### Projects and their venvs
+
+| Project | Path | Notes |
+|---------|------|-------|
+| ModernAppTemplate | `/work/ModernAppTemplate/backend` | Template repo. `regen.sh` runs `poetry install` in test-app. |
+| test-app | `/work/ModernAppTemplate/backend/test-app` | Generated from template. Has its own venv with all template deps. |
+| IoTSupport | `/work/IoTSupport/backend` | Downstream app. Has its own venv. |
+| ElectronicsInventory | `/work/ElectronicsInventory/backend` | Downstream app. Has its own venv. |
+
+### Why this matters
+
+- `pyproject.toml` is app-owned (`_skip_if_exists`) — `copier update` does NOT modify it
+- When enabling new feature flags (e.g., `use_s3=true`), copier adds the code files but **not** the dependencies — you must manually add them to the downstream app's `pyproject.toml` and run `poetry lock && poetry install`
+- Each venv is isolated. A dependency being available in one project does not mean it exists in another. Always verify with `poetry run python -c "import <module>"` in the target project.
+
 ## Project Structure
 
 ```
@@ -52,8 +79,8 @@ This script removes old test-app, runs `copier copy`, copies domain files from `
 ### 4. Run Both Test Suites
 ```bash
 cd /work/ModernAppTemplate/backend/test-app
-python -m pytest ../tests/ -v      # Mother project tests (infrastructure)
-python -m pytest tests/ -v          # Domain tests (Items CRUD)
+poetry run pytest ../tests/ -v      # Mother project tests (infrastructure)
+poetry run pytest tests/ -v          # Domain tests (Items CRUD)
 ```
 
 ### 5. SQLite for Testing
@@ -139,8 +166,8 @@ Both `tests/conftest.py` (mother project) and `test-app/tests/conftest.py` (doma
 - **Always run them separately:**
   ```bash
   cd test-app
-  python -m pytest ../tests/ -v      # Mother project (infrastructure)
-  python -m pytest tests/ -v          # Domain (Items CRUD)
+  poetry run pytest ../tests/ -v      # Mother project (infrastructure)
+  poetry run pytest tests/ -v          # Domain (Items CRUD)
   ```
 - Both conftest files re-export from `tests.conftest_infrastructure` (the generated infrastructure fixtures in test-app). This works because tests run from inside `test-app/`, so `tests.conftest_infrastructure` resolves to `test-app/tests/conftest_infrastructure.py`.
 - Do NOT duplicate fixtures in conftest files. Import from `conftest_infrastructure` and add domain-specific fixtures only.
