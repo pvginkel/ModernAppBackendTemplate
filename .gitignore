@@ -1,0 +1,6 @@
+__pycache__
+.env
+.coverage
+/tmp
+/MagicMock
+/.pytest_cache

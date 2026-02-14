@@ -1,0 +1,8 @@
+mkdir -p $(pwd)/tmp
+
+NAME={{ project_name }}
+BACKEND_PORT={{ backend_port }}
+TESTING_BACKEND_PORT=$((BACKEND_PORT + {{ testing_port_offset }}))
+ARGS="
+    -p ${BACKEND_PORT}:${BACKEND_PORT}
+"
