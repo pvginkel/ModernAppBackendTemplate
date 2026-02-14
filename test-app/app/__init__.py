@@ -166,6 +166,10 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.api.sse import sse_bp
     app.register_blueprint(sse_bp)
 
+    # Register testing auth endpoints (runtime check handles access control)
+    from app.api.testing_auth import testing_auth_bp
+    app.register_blueprint(testing_auth_bp)
+
     # Register CAS (Content-Addressable Storage) blueprint
     from app.api.cas import cas_bp
     app.register_blueprint(cas_bp)

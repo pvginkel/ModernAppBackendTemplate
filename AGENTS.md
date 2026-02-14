@@ -152,3 +152,9 @@ Since `.git` is read-only in the sandbox:
 1. Regenerate test-app and run full test suite
 2. Provide the user with exact git commands to run outside the container
 3. Stage both template changes and regenerated test-app
+
+## Updating Downstream Apps
+
+When template changes need to propagate to a downstream app (e.g., EI's `backend-new/`), **always use `copier update`**. Never manually copy template-owned files into the target app — this bypasses Copier's conflict resolution, skips `_skip_if_exists` protections, and creates drift that's hard to track.
+
+If `copier update` fails because `.git` is read-only or `.copier-answers.yml` is not committed, **stop and tell the user** you need git write access. Do not work around it by manually copying files.
