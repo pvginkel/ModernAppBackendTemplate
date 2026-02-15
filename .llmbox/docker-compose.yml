@@ -22,7 +22,7 @@ services:
       - ../../SSEGateway:/work/SSEGateway:rw
       - ../../IoTSupport/backend:/work/IoTSupport/backend:rw
       - ../../ZigbeeControl/backend:/work/ZigbeeControl/backend:rw
-      - ../../ZigbeeControl-2/backend:/work/ZigbeeControl/backend-new:rw
       - ../../DHCPApp/backend:/work/DHCPApp/backend:rw
+      - ../../DHCPApp-2/backend:/work/DHCPApp/backend-new:rw
     # Required for Chromium
     shm_size: 1G
