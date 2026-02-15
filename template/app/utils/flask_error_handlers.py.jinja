@@ -15,7 +15,9 @@ from typing import Any
 from flask import Flask, g, jsonify
 from flask.wrappers import Response
 from pydantic import ValidationError
+{% if use_database %}
 from sqlalchemy.exc import IntegrityError
+{% endif %}
 from werkzeug.exceptions import BadRequest
 
 from app.exceptions import (
@@ -107,6 +109,7 @@ def register_core_error_handlers(app: Flask) -> None:
             status_code=400,
         )
 
+{% if use_database %}
     @app.errorhandler(IntegrityError)
     def handle_integrity_error(error: IntegrityError) -> tuple[Response, int]:
         """Handle database integrity constraint violations."""
@@ -139,6 +142,7 @@ def register_core_error_handlers(app: Flask) -> None:
                 {"message": "The operation violates a database constraint"},
                 status_code=400,
             )
+{% endif %}
 
     @app.errorhandler(404)
     def handle_not_found(error: Any) -> tuple[Response, int]:

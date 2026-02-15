@@ -1,12 +1,18 @@
 import threading
 from abc import ABC, abstractmethod
+{% if use_database %}
 from typing import TYPE_CHECKING, Any, Protocol
+{% else %}
+from typing import Any, Protocol
+{% endif %}
 
 from pydantic import BaseModel
+{% if use_database %}
 from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from app.services.container import ServiceContainer
+{% endif %}
 
 
 class ProgressHandle(Protocol):
@@ -78,6 +84,7 @@ class BaseTask(ABC):
         """Check if the task has been cancelled."""
         return self._cancelled.is_set()
 
+{% if use_database %}
 class BaseSessionTask(BaseTask):
     """Abstract base class for tasks that require a database session."""
 
@@ -134,3 +141,4 @@ class BaseSessionTask(BaseTask):
             Exception: Any task-specific exceptions that should be reported as failures
         """
         pass
+{% endif %}
