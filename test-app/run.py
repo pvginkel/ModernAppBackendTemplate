@@ -20,16 +20,22 @@ def main() -> None:
     )
 
     settings = Settings.load()
-    app = create_app(settings)
+
+    # Enable debug mode for development and testing environments
+    debug_mode = settings.flask_env in ("development", "testing")
+
+    # In debug mode, Werkzeug's reloader runs the app twice: once in the parent
+    # (watching for file changes) and once in the child (actually serving).
+    # Skip background services in the parent to avoid duplicate MQTT connections,
+    # background threads, etc. The child process has WERKZEUG_RUN_MAIN='true'.
+    is_reloader_parent = debug_mode and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
+    app = create_app(settings, skip_background_services=is_reloader_parent)
 
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", DEFAULT_BACKEND_PORT))
 
     # Get and initialize the lifecycle coordinator
     lifecycle_coordinator = app.container.lifecycle_coordinator()
-
-    # Enable debug mode for development and testing environments
-    debug_mode = settings.flask_env in ("development", "testing")
 
     if debug_mode:
         app.logger.info("Running in debug mode")

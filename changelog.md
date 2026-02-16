@@ -8,6 +8,23 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-02-16 (v0.6.1)
+
+### SSE connection manager: identity binding and disconnect observers
+
+**What changed:** `sse_connection_manager.py` now supports:
+- `bind_identity(request_id, subject)` — associate an OIDC subject with an SSE connection
+- `get_connection_info(request_id)` — retrieve connection info including bound identity
+- `register_on_disconnect(callback)` — observe disconnect events (symmetric with existing `register_on_connect`)
+- `ConnectionInfo` dataclass — returned by `get_connection_info()`
+- `SSE_IDENTITY_BINDING_TOTAL` Prometheus counter
+
+Identity map is cleaned up automatically on disconnect. Disconnect observers are notified outside the lock, matching the existing on_connect pattern.
+
+**Migration steps:**
+1. Run `copier update` — `sse_connection_manager.py` is template-maintained.
+2. No breaking changes. New features are additive.
+
 ## 2026-02-16 (v0.6.0)
 
 ### Background service lifecycle improvements

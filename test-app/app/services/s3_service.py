@@ -1,16 +1,23 @@
 """S3 service for file storage operations."""
 
+from __future__ import annotations
+
 import hashlib
+import logging
 from io import BytesIO
-from typing import Any, BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
-from mypy_boto3_s3.client import S3Client
-from mypy_boto3_s3.type_defs import CopySourceTypeDef
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3.client import S3Client
+    from mypy_boto3_s3.type_defs import CopySourceTypeDef
 
 from app.config import Settings
 from app.exceptions import InvalidOperationException
+
+logger = logging.getLogger(__name__)
 
 
 class S3Service:
@@ -24,6 +31,16 @@ class S3Service:
         """
         self._s3_client: S3Client | None = None
         self.settings = settings
+
+    def startup(self) -> None:
+        """Ensure the S3 bucket exists during app startup.
+
+        Logs a warning on failure rather than preventing app startup.
+        """
+        try:
+            self.ensure_bucket_exists()
+        except Exception as e:
+            logger.warning("Failed to ensure S3 bucket exists: %s", e)
 
     @property
     def s3_client(self) -> S3Client:
@@ -229,6 +246,59 @@ class S3Service:
             if e.response['Error']['Code'] == '404':
                 raise InvalidOperationException("get file metadata from S3", f"file not found: {s3_key}") from e
             raise InvalidOperationException("get file metadata from S3", str(e)) from e
+
+    def list_objects(self, prefix: str) -> list[str]:
+        """List all object keys under a given prefix.
+
+        Args:
+            prefix: S3 key prefix to list under
+
+        Returns:
+            List of S3 keys matching the prefix
+
+        Raises:
+            InvalidOperationException: If listing fails
+        """
+        try:
+            keys: list[str] = []
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            for page in paginator.paginate(
+                Bucket=self.settings.s3_bucket_name,
+                Prefix=prefix,
+            ):
+                for obj in page.get('Contents', []):
+                    keys.append(obj['Key'])
+            return keys
+
+        except ClientError as e:
+            raise InvalidOperationException("list objects in S3", str(e)) from e
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete all objects under a given prefix (best-effort).
+
+        Args:
+            prefix: S3 key prefix to delete
+
+        Returns:
+            Number of objects deleted
+
+        Raises:
+            InvalidOperationException: If listing fails (individual delete
+                errors are logged and swallowed)
+        """
+        keys = self.list_objects(prefix)
+        deleted = 0
+        for key in keys:
+            try:
+                self.s3_client.delete_object(
+                    Bucket=self.settings.s3_bucket_name,
+                    Key=key,
+                )
+                deleted += 1
+            except ClientError as e:
+                logger.warning("Failed to delete S3 object %s: %s", key, e)
+
+        return deleted
 
     def ensure_bucket_exists(self) -> bool:
         """Ensure the configured S3 bucket exists, create if it doesn't.

@@ -206,7 +206,7 @@ def app(test_settings: Settings, test_app_settings: AppSettings, template_connec
         },
     })
 
-    app = create_app(settings, app_settings=test_app_settings)
+    app = create_app(settings, app_settings=test_app_settings, skip_background_services=True)
 
     try:
         yield app
@@ -431,7 +431,7 @@ def oidc_app(
             mock_jwk_client.get_signing_key_from_jwt.return_value = mock_signing_key
             mock_jwk_client_class.return_value = mock_jwk_client
 
-            app = create_app(settings, app_settings=test_app_settings)
+            app = create_app(settings, app_settings=test_app_settings, skip_background_services=True)
 
             try:
                 yield app

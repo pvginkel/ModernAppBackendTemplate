@@ -109,6 +109,11 @@ class TestingService:
             return True
         return False
 
+    def clear_all_sessions(self) -> None:
+        """Clear all test sessions (for test isolation)."""
+        TestingService._sessions.clear()
+        logger.debug("Cleared all test sessions")
+
     def set_forced_auth_error(self, status_code: int) -> None:
         """Set a forced error for the next /api/auth/self request.
 

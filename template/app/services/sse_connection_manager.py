@@ -16,6 +16,7 @@ import json
 import logging
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
@@ -47,8 +48,21 @@ SSE_GATEWAY_ACTIVE_CONNECTIONS = Gauge(
     "sse_gateway_active_connections",
     "Current number of active SSE Gateway connections",
 )
+SSE_IDENTITY_BINDING_TOTAL = Counter(
+    "sse_identity_binding_total",
+    "Total SSE identity binding attempts",
+    ["status"],
+)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ConnectionInfo:
+    """Information about an active SSE connection."""
+
+    request_id: str
+    subject: str | None
 
 
 class SSEConnectionManager:
@@ -74,8 +88,12 @@ class SSEConnectionManager:
         # Reverse: token -> request_id (for disconnect callback)
         self._token_to_request_id: dict[str, str] = {}
 
+        # Identity map: request_id -> OIDC subject
+        self._identity_map: dict[str, str] = {}
+
         # Observer callbacks for connection events
         self._on_connect_callbacks: list[Callable[[str], None]] = []
+        self._on_disconnect_callbacks: list[Callable[[str], None]] = []
 
         # Thread safety
         self._lock = threading.RLock()
@@ -92,6 +110,20 @@ class SSEConnectionManager:
         """
         with self._lock:
             self._on_connect_callbacks.append(callback)
+
+    def register_on_disconnect(self, callback: Callable[[str], None]) -> None:
+        """Register a callback to be notified when connections are disconnected.
+
+        Callbacks are invoked with the request_id after a connection is removed.
+        Each callback is wrapped in exception handling; failures are logged but
+        don't prevent other callbacks from running or the cleanup from completing.
+        Stale disconnect callbacks (unknown or mismatched tokens) do NOT trigger observers.
+
+        Args:
+            callback: Function to call with request_id when connection disconnected
+        """
+        with self._lock:
+            self._on_disconnect_callbacks.append(callback)
 
     def on_connect(self, request_id: str, token: str, url: str) -> None:
         """Register a new connection from SSE Gateway.
@@ -172,10 +204,13 @@ class SSEConnectionManager:
 
         Uses reverse mapping to find request_id. Verifies token matches current
         connection before removing (ignores stale disconnect callbacks).
+        After successful removal, notifies all registered disconnect observers.
 
         Args:
             token: Gateway connection token from disconnect callback
         """
+        disconnected_request_id: str | None = None
+
         with self._lock:
             # Look up request_id via reverse mapping
             request_id = self._token_to_request_id.get(token)
@@ -201,13 +236,16 @@ class SSEConnectionManager:
                 self._token_to_request_id.pop(token, None)
                 return
 
-            # Remove both mappings
+            # Remove both mappings + identity
             del self._connections[request_id]
             del self._token_to_request_id[token]
+            self._identity_map.pop(request_id, None)
 
             # Record disconnect metric
             SSE_GATEWAY_CONNECTIONS_TOTAL.labels(action="disconnect").inc()
             SSE_GATEWAY_ACTIVE_CONNECTIONS.dec()
+
+            disconnected_request_id = request_id
 
             logger.info(
                 "Unregistered SSE Gateway connection",
@@ -216,6 +254,25 @@ class SSEConnectionManager:
                     "token": token,
                 }
             )
+
+        # Notify disconnect observers OUTSIDE the lock (same pattern as on_connect)
+        if disconnected_request_id is not None:
+            with self._lock:
+                callbacks_to_notify = list(self._on_disconnect_callbacks)
+
+            for callback in callbacks_to_notify:
+                try:
+                    callback(disconnected_request_id)
+                except Exception as e:
+                    logger.warning(
+                        "Observer callback raised exception during on_disconnect",
+                        exc_info=True,
+                        extra={
+                            "request_id": disconnected_request_id,
+                            "callback": getattr(callback, "__name__", repr(callback)),
+                            "error": str(e),
+                        }
+                    )
 
     def has_connection(self, request_id: str) -> bool:
         """Check if a connection exists for the given request_id.
@@ -228,6 +285,50 @@ class SSEConnectionManager:
         """
         with self._lock:
             return request_id in self._connections
+
+    def bind_identity(self, request_id: str, subject: str) -> None:
+        """Associate an OIDC subject with a connected request_id.
+
+        The caller is responsible for token extraction and validation;
+        this method simply stores the mapping. Typically called from the
+        SSE Gateway connect callback after validating the forwarded headers.
+
+        Args:
+            request_id: SSE connection request ID (must already be connected)
+            subject: Validated OIDC subject string
+        """
+        with self._lock:
+            if request_id not in self._connections:
+                SSE_IDENTITY_BINDING_TOTAL.labels(status="failed").inc()
+                logger.warning(
+                    "Identity binding failed: no active connection",
+                    extra={"request_id": request_id},
+                )
+                return
+            self._identity_map[request_id] = subject
+
+        SSE_IDENTITY_BINDING_TOTAL.labels(status="success").inc()
+        logger.info(
+            "Identity bound for SSE connection",
+            extra={"request_id": request_id, "subject": subject},
+        )
+
+    def get_connection_info(self, request_id: str) -> ConnectionInfo | None:
+        """Get information about an active SSE connection.
+
+        Args:
+            request_id: SSE connection request ID
+
+        Returns:
+            ConnectionInfo if the connection is active, None otherwise
+        """
+        with self._lock:
+            if request_id not in self._connections:
+                return None
+            return ConnectionInfo(
+                request_id=request_id,
+                subject=self._identity_map.get(request_id),
+            )
 
     def send_event(
         self,
