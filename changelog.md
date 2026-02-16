@@ -18,13 +18,14 @@ New files:
 - `template/app/schemas/testing_sse.py` — Pydantic request/response schemas for all testing SSE endpoints
 
 Files changed:
-- `template/app/api/testing_sse.py` — Added `@api.validate()` decorators, added `send_task_event` endpoint, switched to lazy `reject_if_not_testing` import pattern
+- `template/app/api/testing_sse.py` — Added `@api.validate()` decorators, added `send_task_event` endpoint, switched to lazy `reject_if_not_testing` import pattern; declared `HTTP_400=TestErrorResponseSchema` on `send_task_event` so SpectTree doesn't reject error responses
 - `copier.yml` — Added `app/schemas/testing_sse.py` to SSE feature-flag exclusion list
 
 **Migration steps:**
 1. Run `copier update` — both files are template-maintained and will be created/updated automatically
 2. If your app has a custom `app/schemas/testing_sse.py`, it will be overwritten by the template version. Move any app-specific schemas to a different file name
 3. If your app's integration tests reference `resp.json()["task_id"]` from the start-task endpoint, no change needed — the response format uses snake_case field names
+4. If your app's tests assert camelCase keys in testing SSE responses (e.g., `requestId`, `taskId`, `eventType`), update to snake_case (`request_id`, `task_id`, `event_type`)
 
 ## 2026-02-14
 
