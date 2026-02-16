@@ -4,6 +4,7 @@ Hook points called by create_app():
   - create_container()
   - register_blueprints()
   - register_error_handlers()
+  - register_root_blueprints()
 
 Hook points called by CLI command handlers:
   - register_cli_commands()
@@ -31,6 +32,15 @@ def register_blueprints(api_bp: Blueprint, app: Flask) -> None:
 
 def register_error_handlers(app: Flask) -> None:
     """Register app-specific error handlers."""
+    pass
+
+
+def register_root_blueprints(app: Flask) -> None:
+    """Register app-specific blueprints directly on the app (not under /api prefix).
+
+    Use this for internal endpoints, WebSocket handlers, or other routes
+    that should not be nested under the /api URL prefix.
+    """
     pass
 
 

@@ -8,6 +8,47 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-02-16 (v0.6.3)
+
+### Background service startup registry and register_root_blueprints hook
+
+**What changed:**
+
+1. **`container.py` scaffold** — Adopted the `register_for_background_startup` pattern. Infrastructure service startup is now declared co-located with provider definitions, and `start_background_services(container)` runs them all. App-specific services register their starters the same way.
+
+2. **`__init__.py`** — Inline startup calls (`temp_file_manager().start_cleanup_thread()`, `task_service().startup()`, `s3_service().startup()`, `frontend_version_service()`) replaced with a single call to `start_background_services(container)`.
+
+3. **`startup.py` scaffold** — New hook: `register_root_blueprints(app)` for registering blueprints directly on the Flask app (not under `/api`). Called after template blueprints (health, metrics) and before feature-gated blueprints (SSE, OIDC, S3).
+
+**Migration steps:**
+1. Run `copier update` — `__init__.py` is template-maintained and will be updated automatically.
+2. Add to your `app/startup.py` (app-owned):
+   ```python
+   def register_root_blueprints(app: Flask) -> None:
+       """Register app-specific blueprints directly on the app."""
+       pass
+   ```
+3. Add the startup registry to your `app/services/container.py` (app-owned):
+   ```python
+   from collections.abc import Callable
+   from typing import Any
+
+   _background_starters: list[Callable[[Any], None]] = []
+
+   def register_for_background_startup(fn: Callable[[Any], None]) -> None:
+       _background_starters.append(fn)
+
+   # After each provider that needs startup:
+   register_for_background_startup(lambda c: c.temp_file_manager().start_cleanup_thread())
+   register_for_background_startup(lambda c: c.task_service().startup())
+   # etc.
+
+   def start_background_services(container: Any) -> None:
+       for starter in _background_starters:
+           starter(container)
+   ```
+4. Move any root-level blueprint registrations from `__init__.py` overrides into `register_root_blueprints()`.
+
 ## 2026-02-16 (v0.6.2)
 
 ### SSE OIDC identity auto-binding in connect callback
