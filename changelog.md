@@ -8,6 +8,24 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-02-16 (v0.6.2)
+
+### SSE OIDC identity auto-binding in connect callback
+
+**What changed:** `app/api/sse.py` is now a Jinja template (`sse.py.jinja`) that conditionally includes OIDC identity binding when `use_oidc=true`.
+
+When both `use_sse` and `use_oidc` are enabled:
+- `_extract_token_from_headers(headers, cookie_name)` — extracts Bearer token or cookie from forwarded SSE Gateway headers
+- `_bind_identity(request_id, headers, sse_connection_manager, auth_service, settings)` — validates OIDC token and binds identity to the SSE connection (falls back to sentinel subject when OIDC is disabled at runtime)
+- `handle_callback()` injects `AuthService` and calls `_bind_identity()` after `on_connect()`
+
+When `use_oidc=false`: no OIDC imports, no identity binding code — identical to the previous `sse.py`.
+
+**Migration steps:**
+1. Run `copier update` — `sse.py` is template-maintained and will be updated automatically.
+2. No breaking changes. Identity binding is additive and only active when OIDC is enabled.
+3. If your app has custom code in `sse.py`, move it to a separate module — `sse.py` will be overwritten by copier.
+
 ## 2026-02-16 (v0.6.1)
 
 ### SSE connection manager: identity binding and disconnect observers
