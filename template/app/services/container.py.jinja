@@ -26,7 +26,7 @@ from app.services.s3_service import S3Service
 {% endif %}
 from app.services.sse_connection_manager import SSEConnectionManager
 from app.services.task_service import TaskService
-{% if use_s3 %}
+{% if use_oidc or use_s3 %}
 from app.services.testing_service import TestingService
 {% endif %}
 from app.utils.lifecycle_coordinator import LifecycleCoordinator
@@ -54,6 +54,10 @@ class ServiceContainer(containers.DeclarativeContainer):
         s3_service=s3_service,
         app_settings=app_config,
     )
+{% endif %}
+{% if use_oidc or use_s3 %}
+
+    # Testing service - test sessions and content generation
     testing_service = providers.Factory(TestingService)
 {% endif %}
 
