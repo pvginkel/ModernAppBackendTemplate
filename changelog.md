@@ -8,6 +8,29 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-02-16 (v0.6.0)
+
+### Background service lifecycle improvements
+
+**What changed:**
+
+1. **`run.py`** — Werkzeug reloader parent detection. In debug mode, background services are now skipped in the reloader parent process to avoid duplicate threads, MQTT connections, etc.
+
+2. **`task_service.py`** — Cleanup thread start is deferred to a new `startup()` method instead of running in `__init__()`. This improves test isolation (no daemon threads spawned during container construction).
+
+3. **`s3_service.py`** — Added `startup()` (wraps `ensure_bucket_exists()` with warning-only error handling), `list_objects(prefix)` (paginated listing), and `delete_prefix(prefix)` (best-effort bulk delete). Also moved `mypy_boto3_s3` imports under `TYPE_CHECKING` and added a module logger.
+
+4. **`__init__.py`** — Background service startup block now calls `task_service.startup()` and `s3_service.startup()` instead of inline code.
+
+5. **`conftest_infrastructure.py`** — Test fixtures (`app`, `oidc_app`) now pass `skip_background_services=True` to `create_app()`. Background cleanup threads and S3 bucket checks are no longer started during tests.
+
+6. **`testing_service.py`** — Added `clear_all_sessions()` method for test isolation.
+
+**Migration steps:**
+1. Run `copier update` — all changed files are template-maintained.
+2. If your app starts background services in `__init__.py` (e.g., `s3_service.ensure_bucket_exists()`), remove that code — the template now handles it via `s3_service.startup()`.
+3. If your tests relied on background services starting during `create_app()`, they now need explicit startup calls or the services must register for lifecycle STARTUP events.
+
 ## 2026-02-16
 
 ### Add SpectTree validation and send_task_event endpoint to testing SSE endpoints

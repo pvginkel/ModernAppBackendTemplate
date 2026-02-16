@@ -103,3 +103,10 @@ class TaskEventResponseSchema(BaseModel):
         description="Whether the event was delivered successfully",
         examples=[True],
     )
+
+
+class TestErrorResponseSchema(BaseModel):
+    """Error response schema for testing endpoints."""
+
+    error: str = Field(..., description="Error message")
+    status: str = Field(..., description="Error status code", examples=["not_found"])

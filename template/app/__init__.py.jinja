@@ -231,15 +231,13 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
         # Start temp file manager cleanup thread during app creation
         temp_file_manager = container.temp_file_manager()
         temp_file_manager.start_cleanup_thread()
+
+        # Start task service cleanup thread
+        container.task_service().startup()
 {% if use_s3 %}
 
         # Ensure S3 bucket exists during startup
-        try:
-            s3_service = container.s3_service()
-            s3_service.ensure_bucket_exists()
-        except Exception as e:
-            # Log warning but don't fail startup - S3 might be optional
-            app.logger.warning(f"Failed to ensure S3 bucket exists: {e}")
+        container.s3_service().startup()
 {% endif %}
 {% if use_database %}
 

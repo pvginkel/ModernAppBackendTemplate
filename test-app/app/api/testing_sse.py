@@ -24,6 +24,7 @@ from app.schemas.testing_sse import (
     TaskEventResponseSchema,
     TaskStartRequestSchema,
     TaskStartResponseSchema,
+    TestErrorResponseSchema,
 )
 from app.services.base_task import BaseTask, ProgressHandle
 from app.services.container import ServiceContainer
@@ -145,7 +146,7 @@ def trigger_version_event(
 @testing_sse_bp.route("/sse/task-event", methods=["POST"])
 @api.validate(
     json=TaskEventRequestSchema,
-    resp=SpectreeResponse(HTTP_200=TaskEventResponseSchema),
+    resp=SpectreeResponse(HTTP_200=TaskEventResponseSchema, HTTP_400=TestErrorResponseSchema),
 )
 @inject
 def send_task_event(
