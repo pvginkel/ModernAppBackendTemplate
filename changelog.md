@@ -8,6 +8,24 @@ See `CLAUDE.md` for instructions on how to use this changelog when updating apps
 
 <!-- Add new entries at the top, below this line -->
 
+## 2026-02-16
+
+### Add SpectTree validation and send_task_event endpoint to testing SSE endpoints
+
+**What changed:** The testing SSE endpoints (`app/api/testing_sse.py`) now use SpectTree schema validation, matching the pattern used by `testing_content.py` and other template endpoints. A new endpoint `POST /api/testing/sse/task-event` allows integration tests to inject fake task events directly into SSE connections without running actual background tasks.
+
+New files:
+- `template/app/schemas/testing_sse.py` — Pydantic request/response schemas for all testing SSE endpoints
+
+Files changed:
+- `template/app/api/testing_sse.py` — Added `@api.validate()` decorators, added `send_task_event` endpoint, switched to lazy `reject_if_not_testing` import pattern
+- `copier.yml` — Added `app/schemas/testing_sse.py` to SSE feature-flag exclusion list
+
+**Migration steps:**
+1. Run `copier update` — both files are template-maintained and will be created/updated automatically
+2. If your app has a custom `app/schemas/testing_sse.py`, it will be overwritten by the template version. Move any app-specific schemas to a different file name
+3. If your app's integration tests reference `resp.json()["task_id"]` from the start-task endpoint, no change needed — the response format uses snake_case field names
+
 ## 2026-02-14
 
 ### Fix auth/self endpoint not extracting token from request
