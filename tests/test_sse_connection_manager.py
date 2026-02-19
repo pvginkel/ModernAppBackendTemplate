@@ -88,3 +88,100 @@ class TestBroadcastSend:
             service_type="version",
         )
         assert result is False
+
+
+class TestSubjectFilteredBroadcast:
+    """Tests for broadcast send with target_subject filtering."""
+
+    @patch("app.services.sse_connection_manager.requests.post")
+    def test_broadcast_with_target_subject_filters_by_identity(
+        self, mock_post, sse_connection_manager
+    ):
+        """Only connections with matching subject receive the event."""
+        sse_connection_manager.on_connect("req-alice", "tok-a", "/api/sse/stream?request_id=req-alice")
+        sse_connection_manager.on_connect("req-bob", "tok-b", "/api/sse/stream?request_id=req-bob")
+        sse_connection_manager.bind_identity("req-alice", "alice")
+        sse_connection_manager.bind_identity("req-bob", "bob")
+
+        mock_post.return_value = Mock(status_code=200)
+
+        result = sse_connection_manager.send_event(
+            None,
+            {"task_id": "t1"},
+            event_name="task_event",
+            service_type="task",
+            target_subject="alice",
+        )
+
+        assert result is True
+        assert mock_post.call_count == 1
+        # Verify the token sent to belongs to alice
+        call_body = mock_post.call_args_list[0][1]["json"]
+        assert call_body["token"] == "tok-a"
+
+    @patch("app.services.sse_connection_manager.requests.post")
+    def test_broadcast_with_target_subject_includes_local_user_sentinel(
+        self, mock_post, sse_connection_manager
+    ):
+        """Connections bound with 'local-user' sentinel always receive events."""
+        sse_connection_manager.on_connect("req1", "tok-1", "/api/sse/stream?request_id=req1")
+        sse_connection_manager.on_connect("req2", "tok-2", "/api/sse/stream?request_id=req2")
+        sse_connection_manager.bind_identity("req1", "alice")
+        sse_connection_manager.bind_identity("req2", "local-user")
+
+        mock_post.return_value = Mock(status_code=200)
+
+        result = sse_connection_manager.send_event(
+            None,
+            {"task_id": "t1"},
+            event_name="task_event",
+            service_type="task",
+            target_subject="bob",  # Neither connection is "bob"
+        )
+
+        assert result is True
+        # Only local-user connection should receive
+        assert mock_post.call_count == 1
+        call_body = mock_post.call_args_list[0][1]["json"]
+        assert call_body["token"] == "tok-2"
+
+    @patch("app.services.sse_connection_manager.requests.post")
+    def test_broadcast_without_target_subject_sends_to_all(
+        self, mock_post, sse_connection_manager
+    ):
+        """Without target_subject, broadcast reaches all connections."""
+        sse_connection_manager.on_connect("req1", "tok-1", "/api/sse/stream?request_id=req1")
+        sse_connection_manager.on_connect("req2", "tok-2", "/api/sse/stream?request_id=req2")
+        sse_connection_manager.bind_identity("req1", "alice")
+        sse_connection_manager.bind_identity("req2", "bob")
+
+        mock_post.return_value = Mock(status_code=200)
+
+        result = sse_connection_manager.send_event(
+            None,
+            {"version": "1.0"},
+            event_name="version",
+            service_type="version",
+        )
+
+        assert result is True
+        assert mock_post.call_count == 2
+
+    @patch("app.services.sse_connection_manager.requests.post")
+    def test_broadcast_with_target_subject_no_match_returns_false(
+        self, mock_post, sse_connection_manager
+    ):
+        """When no connections match target_subject, returns False."""
+        sse_connection_manager.on_connect("req1", "tok-1", "/api/sse/stream?request_id=req1")
+        sse_connection_manager.bind_identity("req1", "alice")
+
+        result = sse_connection_manager.send_event(
+            None,
+            {"task_id": "t1"},
+            event_name="task_event",
+            service_type="task",
+            target_subject="bob",
+        )
+
+        assert result is False
+        assert mock_post.call_count == 0
