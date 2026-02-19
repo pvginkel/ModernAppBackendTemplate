@@ -110,6 +110,34 @@ class TestTaskService:
         assert TaskEventType.PROGRESS_UPDATE in event_types
         assert TaskEventType.TASK_COMPLETED in event_types
 
+    def test_task_events_include_target_subject(self, task_service, mock_sse_connection_manager):
+        """When caller_subject is set, all task events pass it as target_subject."""
+        task = DemoTask()
+        task_service.start_task(task, caller_subject="alice", steps=1, delay=0.05)
+        time.sleep(0.3)
+
+        calls = mock_sse_connection_manager.send_event.call_args_list
+        assert len(calls) > 0
+
+        for call in calls:
+            assert call.kwargs.get("target_subject") == "alice", (
+                f"Expected target_subject='alice', got {call.kwargs}"
+            )
+
+    def test_task_events_broadcast_when_no_subject(self, task_service, mock_sse_connection_manager):
+        """When caller_subject is None, events broadcast to all (target_subject=None)."""
+        task = DemoTask()
+        task_service.start_task(task, steps=1, delay=0.05)
+        time.sleep(0.3)
+
+        calls = mock_sse_connection_manager.send_event.call_args_list
+        assert len(calls) > 0
+
+        for call in calls:
+            assert call.kwargs.get("target_subject") is None, (
+                f"Expected target_subject=None, got {call.kwargs}"
+            )
+
     def test_concurrent_tasks(self, task_service):
         responses = []
         for i in range(3):
@@ -184,3 +212,27 @@ class TestTaskProgressHandle:
         combined_event = combined_call.args[1]
         assert combined_event["data"]["text"] == "Combined update"
         assert combined_event["data"]["value"] == 0.75
+
+    def test_progress_handle_passes_target_subject(self):
+        from unittest.mock import Mock
+
+        mock_sse_connection_manager = Mock()
+        handle = TaskProgressHandle(
+            "test-task-id", mock_sse_connection_manager, target_subject="alice"
+        )
+
+        handle.send_progress("Step 1", 0.5)
+
+        call = mock_sse_connection_manager.send_event.call_args
+        assert call.kwargs["target_subject"] == "alice"
+
+    def test_progress_handle_none_subject_broadcasts(self):
+        from unittest.mock import Mock
+
+        mock_sse_connection_manager = Mock()
+        handle = TaskProgressHandle("test-task-id", mock_sse_connection_manager)
+
+        handle.send_progress("Step 1", 0.5)
+
+        call = mock_sse_connection_manager.send_event.call_args
+        assert call.kwargs["target_subject"] is None

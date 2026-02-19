@@ -38,17 +38,30 @@ def pytest_configure(config: pytest.Config) -> None:
     Checks S3 connectivity at session start and aborts with a clear
     message if the service is unreachable. This prevents confusing scattered
     errors throughout the suite.
+
+    S3 credentials are loaded from ``.env.test`` (see ``_TEST_ENV_FILE``
+    above). If that file is missing or ``S3_ENDPOINT_URL`` is not set,
+    the check falls back to ``http://localhost:9000`` which will almost
+    certainly fail.
     """
     import urllib.error
     import urllib.request
 
-    endpoint = os.environ.get("S3_ENDPOINT_URL", "http://localhost:9000")
+    endpoint = os.environ.get("S3_ENDPOINT_URL", "")
+    if not endpoint:
+        pytest.exit(
+            "S3_ENDPOINT_URL is not set. "
+            "Create a .env.test file with S3_ENDPOINT_URL, S3_ACCESS_KEY_ID, "
+            "S3_SECRET_ACCESS_KEY, and S3_BUCKET_NAME.",
+            returncode=1,
+        )
     try:
         urllib.request.urlopen(endpoint, timeout=3)
     except (urllib.error.URLError, OSError, TimeoutError):
         pytest.exit(
-            f"S3 is not reachable at {endpoint}. "
-            "Ensure S3_ENDPOINT_URL is configured before running tests.",
+            f"S3 storage is not reachable at {endpoint}. "
+            "Check that the endpoint in .env.test is correct and the "
+            "storage server is running.",
             returncode=1,
         )
 

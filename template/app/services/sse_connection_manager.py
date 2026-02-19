@@ -335,23 +335,38 @@ class SSEConnectionManager:
         request_id: str | None,
         event_data: dict[str, Any],
         event_name: str,
-        service_type: str
+        service_type: str,
+        target_subject: str | None = None,
     ) -> bool:
         """Send an event to the SSE Gateway for delivery to client(s).
 
         Args:
-            request_id: Request identifier for targeted send, or None for broadcast to all connections
+            request_id: Request identifier for targeted send, or None for broadcast
             event_data: Event payload (will be JSON-serialized)
             event_name: SSE event name
             service_type: Service type for metrics ("task" or "version")
+            target_subject: When broadcasting (request_id=None), restrict delivery
+                to connections whose bound subject matches this value or the
+                ``"local-user"`` sentinel. None means broadcast to all.
 
         Returns:
             True if event sent successfully to at least one connection, False otherwise
         """
-        # Broadcast mode: send to all active connections
+        # Broadcast mode: send to all (or subject-filtered) active connections
         if request_id is None:
             with self._lock:
-                tokens_to_send = [(req_id, conn["token"]) for req_id, conn in self._connections.items()]
+                if target_subject is not None:
+                    tokens_to_send = [
+                        (req_id, conn["token"])
+                        for req_id, conn in self._connections.items()
+                        if self._identity_map.get(req_id) == target_subject
+                        or self._identity_map.get(req_id) == "local-user"
+                    ]
+                else:
+                    tokens_to_send = [
+                        (req_id, conn["token"])
+                        for req_id, conn in self._connections.items()
+                    ]
 
             if not tokens_to_send:
                 logger.debug("Broadcast event: no active connections")

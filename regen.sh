@@ -14,7 +14,7 @@ echo "==> Removing old test-app..."
 rm -rf test-app
 
 echo "==> Running copier copy..."
-poetry run copier copy . test-app --trust --defaults \
+poetry run copier copy . test-app --trust --defaults --vcs-ref HEAD \
   -d project_name=test-app \
   -d project_description="Test application" \
   -d author_name="Test Author" \

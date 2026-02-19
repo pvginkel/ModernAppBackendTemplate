@@ -34,9 +34,15 @@ logger = logging.getLogger(__name__)
 class TaskProgressHandle:
     """Implementation of ProgressHandle for sending updates via SSE."""
 
-    def __init__(self, task_id: str, sse_connection_manager: SSEConnectionManager):
+    def __init__(
+        self,
+        task_id: str,
+        sse_connection_manager: SSEConnectionManager,
+        target_subject: str | None = None,
+    ):
         self.task_id = task_id
         self.sse_connection_manager = sse_connection_manager
+        self.target_subject = target_subject
         self.progress = 0.0
         self.progress_text = ""
 
@@ -57,20 +63,20 @@ class TaskProgressHandle:
         self._send_progress_event(TaskProgressUpdate(text=text, value=value))
 
     def _send_progress_event(self, progress: TaskProgressUpdate) -> None:
-        """Broadcast progress update event to all connections."""
+        """Send progress update event to matching connections."""
         event = TaskEvent(
             event_type=TaskEventType.PROGRESS_UPDATE,
             task_id=self.task_id,
             data=progress.model_dump()
         )
         try:
-            # Broadcast to all connections
             # Use mode='json' to serialize datetime to ISO format string
             self.sse_connection_manager.send_event(
                 None,  # None = broadcast
                 event.model_dump(mode='json'),
                 event_name="task_event",
-                service_type="task"
+                service_type="task",
+                target_subject=self.target_subject,
             )
         except Exception as e:
             # If sending fails, log warning and continue
@@ -129,12 +135,21 @@ class TaskService:
         self._cleanup_thread = threading.Thread(target=self._cleanup_worker, daemon=True)
         self._cleanup_thread.start()
 
-    def start_task(self, task: BaseTask, **kwargs: Any) -> TaskStartResponse:
+    def start_task(
+        self,
+        task: BaseTask,
+        caller_subject: str | None = None,
+        **kwargs: Any,
+    ) -> TaskStartResponse:
         """
         Start a background task and return task info.
 
         Args:
             task: Instance of BaseTask to execute
+            caller_subject: OIDC subject of the user starting the task.
+                When set, task events are only delivered to SSE connections
+                with a matching subject (or the ``"local-user"`` sentinel).
+                When None, events are broadcast to all connections.
             **kwargs: Task-specific parameters
 
         Returns:
@@ -153,6 +168,7 @@ class TaskService:
             # Create task info
             task_info = TaskInfo(
                 task_id=task_id,
+                subject=caller_subject,
                 status=TaskStatus.PENDING,
                 start_time=datetime.now(UTC),
                 end_time=None,
@@ -165,7 +181,7 @@ class TaskService:
             self._task_instances[task_id] = task
 
             # Submit task to thread pool
-            self._executor.submit(self._execute_task, task_id, task, kwargs)
+            self._executor.submit(self._execute_task, task_id, task, kwargs, caller_subject)
 
         logger.info(f"Started task {task_id} of type {type(task).__name__}")
 
@@ -174,19 +190,25 @@ class TaskService:
             status=TaskStatus.PENDING
         )
 
-    def _broadcast_task_event(self, event: TaskEvent) -> None:
-        """Broadcast a task event to all connections.
+    def _broadcast_task_event(
+        self,
+        event: TaskEvent,
+        target_subject: str | None = None,
+    ) -> None:
+        """Send a task event to matching connections.
 
         Args:
-            event: Task event to broadcast
+            event: Task event to send
+            target_subject: When set, only deliver to connections with a
+                matching subject or the ``"local-user"`` sentinel.
         """
-        # Broadcast event to all connections
         # Use mode='json' to serialize datetime to ISO format string
         success = self.sse_connection_manager.send_event(
             None,  # None = broadcast
             event.model_dump(mode='json'),
             event_name="task_event",
-            service_type="task"
+            service_type="task",
+            target_subject=target_subject,
         )
 
         if not success:
@@ -238,7 +260,13 @@ class TaskService:
             logger.debug(f"Removed completed task {task_id}")
             return True
 
-    def _execute_task(self, task_id: str, task: BaseTask, kwargs: dict[str, Any]) -> None:
+    def _execute_task(
+        self,
+        task_id: str,
+        task: BaseTask,
+        kwargs: dict[str, Any],
+        caller_subject: str | None = None,
+    ) -> None:
         """Execute a task in a background thread."""
         try:
             # Update status to running
@@ -247,16 +275,18 @@ class TaskService:
                 if task_info:
                     task_info.status = TaskStatus.RUNNING
 
-            # Broadcast task started event
+            # Send task started event
             start_event = TaskEvent(
                 event_type=TaskEventType.TASK_STARTED,
                 task_id=task_id,
                 data=None,
             )
-            self._broadcast_task_event(start_event)
+            self._broadcast_task_event(start_event, target_subject=caller_subject)
 
             # Create progress handle
-            progress_handle = TaskProgressHandle(task_id, self.sse_connection_manager)
+            progress_handle = TaskProgressHandle(
+                task_id, self.sse_connection_manager, target_subject=caller_subject
+            )
 
             # Execute the task
             result = task.execute(progress_handle, **kwargs)
@@ -270,13 +300,15 @@ class TaskService:
                     # Convert BaseModel to dict for storage
                     task_info.result = result.model_dump() if result else None
 
-                    # Broadcast completion event
+                    # Send completion event
                     completion_event = TaskEvent(
                         event_type=TaskEventType.TASK_COMPLETED,
                         task_id=task_id,
                         data=result.model_dump() if result else None
                     )
-                    self._broadcast_task_event(completion_event)
+                    self._broadcast_task_event(
+                        completion_event, target_subject=caller_subject
+                    )
 
                     logger.info(f"Task {task_id} completed successfully")
 
@@ -298,7 +330,7 @@ class TaskService:
                     task_info.end_time = datetime.now(UTC)
                     task_info.error = error_msg
 
-            # Broadcast failure event
+            # Send failure event
             failure_event = TaskEvent(
                 event_type=TaskEventType.TASK_FAILED,
                 task_id=task_id,
@@ -307,7 +339,7 @@ class TaskService:
                     "traceback": error_trace
                 }
             )
-            self._broadcast_task_event(failure_event)
+            self._broadcast_task_event(failure_event, target_subject=caller_subject)
 
             # Check if this was the last task during shutdown
             self._check_tasks_complete()

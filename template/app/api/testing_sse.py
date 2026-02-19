@@ -28,6 +28,7 @@ from app.schemas.testing_sse import (
 )
 from app.services.base_task import BaseTask, ProgressHandle
 from app.services.container import ServiceContainer
+from app.utils.auth import get_auth_context
 from app.services.frontend_version_service import FrontendVersionService
 from app.services.sse_connection_manager import SSEConnectionManager
 from app.services.task_service import TaskService
@@ -109,7 +110,9 @@ def start_test_task(
     else:
         return jsonify({"error": f"Unknown task_type: {payload.task_type}"}), 400
 
-    result = task_service.start_task(task, **payload.params)
+    auth = get_auth_context()
+    caller_subject = auth.subject if auth else None
+    result = task_service.start_task(task, caller_subject=caller_subject, **payload.params)
     response = TaskStartResponseSchema(task_id=result.task_id, status="started")
     return jsonify(response.model_dump()), 200
 
