@@ -1,6 +1,7 @@
 """Flask application factory."""
 
 import logging
+import sys
 
 from flask import g
 from flask_cors import CORS
@@ -89,6 +90,19 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.utils import _init_request_id
     _init_request_id(app)
 
+    # Enable stderr logging in testing mode so that request logs and exception
+    # tracebacks appear in the process output captured by Playwright.
+    if settings.is_testing:
+        root_logger = logging.getLogger()
+        if not any(
+            isinstance(h, logging.StreamHandler) and getattr(h, 'stream', None) is sys.stderr
+            for h in root_logger.handlers
+        ):
+            stderr_handler = logging.StreamHandler(sys.stderr)
+            stderr_handler.setFormatter(logging.Formatter('%(name)s %(levelname)s: %(message)s'))
+            root_logger.addHandler(stderr_handler)
+        root_logger.setLevel(logging.INFO)
+
     # Set up log capture handler in testing mode
     if settings.is_testing:
         from app.utils.log_capture import LogCaptureHandler
@@ -98,10 +112,8 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
         lifecycle_coordinator = container.lifecycle_coordinator()
         log_handler.set_lifecycle_coordinator(lifecycle_coordinator)
 
-        # Attach to root logger
         root_logger = logging.getLogger()
         root_logger.addHandler(log_handler)
-        root_logger.setLevel(logging.INFO)
 
         app.logger.info("Log capture handler initialized for testing mode")
 
