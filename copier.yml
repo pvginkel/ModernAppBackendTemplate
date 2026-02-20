@@ -98,6 +98,7 @@ _exclude:
   - "{% if not use_database %}app/utils/empty_string_normalization.py{% endif %}"
   - "{% if not use_database %}alembic.ini{% endif %}"
   - "{% if not use_database %}alembic{% endif %}"
+  - "{% if not use_database %}scripts/initialize-sqlite-database.sh{% endif %}"
 
   # OIDC
   - "{% if not use_oidc %}app/api/auth.py{% endif %}"
