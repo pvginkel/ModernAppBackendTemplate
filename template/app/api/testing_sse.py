@@ -28,10 +28,10 @@ from app.schemas.testing_sse import (
 )
 from app.services.base_task import BaseTask, ProgressHandle
 from app.services.container import ServiceContainer
-from app.utils.auth import get_auth_context
 from app.services.frontend_version_service import FrontendVersionService
 from app.services.sse_connection_manager import SSEConnectionManager
 from app.services.task_service import TaskService
+from app.utils.auth import get_auth_context
 from app.utils.spectree_config import api
 
 testing_sse_bp = Blueprint("testing_sse", __name__, url_prefix="/api/testing")
