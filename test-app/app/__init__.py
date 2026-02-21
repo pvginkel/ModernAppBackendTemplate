@@ -130,11 +130,10 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.startup import register_error_handlers
 
     register_error_handlers(app)
+    health_service = container.health_service()
 
     # Register database health checks with HealthService
     from app import database as _database_module
-
-    health_service = container.health_service()
 
     def _check_db_readiness() -> dict:
         # Look up functions via module to allow test patching
@@ -149,6 +148,22 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
         }
 
     health_service.register_readyz("database", _check_db_readiness)
+
+    # Register SSE Gateway readiness check with HealthService
+    import requests as _requests_module
+
+    def _check_sse_gateway_readiness() -> dict:
+        try:
+            resp = _requests_module.get(
+                f"{settings.sse_gateway_url}/readyz", timeout=2.0
+            )
+            if resp.status_code == 200:
+                return {"reachable": True, "ok": True}
+            return {"reachable": True, "status_code": resp.status_code, "ok": False}
+        except Exception as e:
+            return {"reachable": False, "error": str(e), "ok": False}
+
+    health_service.register_readyz("sse_gateway", _check_sse_gateway_readiness)
 
     # Register main API blueprint (includes auth hooks and auth_bp)
     from app.api import api_bp

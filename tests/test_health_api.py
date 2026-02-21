@@ -1,6 +1,6 @@
 """Tests for health check API endpoints."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from flask import Flask
 from flask.testing import FlaskClient
@@ -13,8 +13,10 @@ class TestHealthEndpoints:
 
     def test_readyz_when_ready(self, client: FlaskClient):
         """Test readiness probe returns 200 when ready."""
+        mock_sse_response = MagicMock(status_code=200)
         with patch('app.database.check_db_connection', return_value=True), \
-             patch('app.database.get_pending_migrations', return_value=[]):
+             patch('app.database.get_pending_migrations', return_value=[]), \
+             patch('requests.get', return_value=mock_sse_response):
             response = client.get("/health/readyz")
 
             assert response.status_code == 200
@@ -62,8 +64,10 @@ class TestHealthEndpoints:
 
     def test_health_endpoints_content_type(self, client: FlaskClient):
         """Test that health endpoints return JSON content type."""
+        mock_sse_response = MagicMock(status_code=200)
         with patch('app.database.check_db_connection', return_value=True), \
-             patch('app.database.get_pending_migrations', return_value=[]):
+             patch('app.database.get_pending_migrations', return_value=[]), \
+             patch('requests.get', return_value=mock_sse_response):
             readyz_response = client.get("/health/readyz")
             assert readyz_response.content_type == "application/json"
 
@@ -72,8 +76,10 @@ class TestHealthEndpoints:
 
     def test_readyz_includes_database_check_results(self, client: FlaskClient):
         """Test that readyz response includes database check details."""
+        mock_sse_response = MagicMock(status_code=200)
         with patch('app.database.check_db_connection', return_value=True), \
-             patch('app.database.get_pending_migrations', return_value=[]):
+             patch('app.database.get_pending_migrations', return_value=[]), \
+             patch('requests.get', return_value=mock_sse_response):
             response = client.get("/health/readyz")
 
             assert response.status_code == 200
@@ -99,6 +105,49 @@ class TestHealthEndpoints:
             assert response.status_code == 503
             assert response.json["ready"] is False
             assert response.json["database"]["migrations_pending"] == 2
+
+
+class TestSSEGatewayHealthCheck:
+    """Test SSE Gateway readiness check."""
+
+    def test_readyz_includes_sse_gateway_check(self, client: FlaskClient):
+        """Test readyz includes SSE gateway check when gateway is reachable."""
+        mock_sse_response = MagicMock(status_code=200)
+        with patch('app.database.check_db_connection', return_value=True), \
+             patch('app.database.get_pending_migrations', return_value=[]), \
+             patch('requests.get', return_value=mock_sse_response):
+            response = client.get("/health/readyz")
+
+            assert response.status_code == 200
+            assert "sse_gateway" in response.json
+            assert response.json["sse_gateway"]["reachable"] is True
+            assert response.json["sse_gateway"]["ok"] is True
+
+    def test_readyz_sse_gateway_unreachable(self, client: FlaskClient):
+        """Test readyz returns 503 when SSE gateway is unreachable."""
+        with patch('app.database.check_db_connection', return_value=True), \
+             patch('app.database.get_pending_migrations', return_value=[]), \
+             patch('requests.get', side_effect=ConnectionError("Connection refused")):
+            response = client.get("/health/readyz")
+
+            assert response.status_code == 503
+            assert response.json["ready"] is False
+            assert response.json["sse_gateway"]["reachable"] is False
+            assert response.json["sse_gateway"]["ok"] is False
+
+    def test_readyz_sse_gateway_not_ready(self, client: FlaskClient):
+        """Test readyz returns 503 when SSE gateway returns non-200."""
+        mock_sse_response = MagicMock(status_code=503)
+        with patch('app.database.check_db_connection', return_value=True), \
+             patch('app.database.get_pending_migrations', return_value=[]), \
+             patch('requests.get', return_value=mock_sse_response):
+            response = client.get("/health/readyz")
+
+            assert response.status_code == 503
+            assert response.json["ready"] is False
+            assert response.json["sse_gateway"]["reachable"] is True
+            assert response.json["sse_gateway"]["ok"] is False
+            assert response.json["sse_gateway"]["status_code"] == 503
 
 
 class TestDrainEndpoint:
