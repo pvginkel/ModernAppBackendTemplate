@@ -53,6 +53,11 @@ testing_port_offset:
   default: 10
   help: "Offset added to backend_port for the testing port"
 
+sse_gateway_port:
+  type: int
+  default: 3002
+  help: "SSE Gateway port (used in dev-sse-gateway.sh)"
+
 use_database:
   type: bool
   default: true
