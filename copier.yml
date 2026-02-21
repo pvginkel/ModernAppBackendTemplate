@@ -86,6 +86,7 @@ _skip_if_exists:
   - "tests/conftest.py"
   - ".env.example"
   - "Dockerfile"
+  - "Jenkinsfile"
 
 # ── Feature-flagged file exclusion ────────────────────────────────────
 
