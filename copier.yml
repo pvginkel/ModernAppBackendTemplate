@@ -53,6 +53,11 @@ testing_port_offset:
   default: 10
   help: "Offset added to backend_port for the testing port"
 
+frontend_port:
+  type: int
+  default: 3000
+  help: "Frontend dev server port (used in CORS_ORIGINS, BASEURL, FRONTEND_VERSION_URL defaults)"
+
 sse_gateway_port:
   type: int
   default: 3002

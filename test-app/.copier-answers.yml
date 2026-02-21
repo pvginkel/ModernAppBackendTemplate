@@ -1,10 +1,11 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
-_commit: v0.7.3-3-gddf91cc
+_commit: v0.7.3-4-gc1e59d0
 _src_path: .
 author_email: test@example.com
 author_name: Test Author
 backend_port: 5000
 database_name: test-app
+frontend_port: 3000
 image_name: registry:5000/test-app
 project_description: Test application
 project_name: test-app

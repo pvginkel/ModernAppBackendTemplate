@@ -127,7 +127,7 @@ def _build_test_settings() -> Settings:
         secret_key="test-secret-key",
         debug=True,
         flask_env="testing",
-        cors_origins=["http://localhost:3000"],
+        cors_origins=["http://localhost:{{ frontend_port }}"],
         # Tasks
         task_max_workers=4,
         task_timeout_seconds=300,
@@ -149,13 +149,13 @@ def _build_test_settings() -> Settings:
 {% if use_sse %}
         # SSE
         sse_heartbeat_interval=1,
-        frontend_version_url="http://localhost:3000/version.json",
+        frontend_version_url="http://localhost:{{ frontend_port }}/version.json",
         sse_gateway_url="http://localhost:{{ sse_gateway_port }}",
         sse_callback_secret="",
 {% endif %}
 {% if use_oidc %}
         # OIDC Authentication (disabled for most tests)
-        baseurl="http://localhost:3000",
+        baseurl="http://localhost:{{ frontend_port }}",
         oidc_enabled=False,
         oidc_issuer_url="https://auth.example.com/realms/test",
         oidc_client_id="test-backend",
