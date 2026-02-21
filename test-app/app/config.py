@@ -209,7 +209,7 @@ class Environment(BaseSettings):
         description="SSE heartbeat interval in seconds (5 for development, 30 for production)"
     )
     SSE_GATEWAY_URL: str = Field(
-        default="http://localhost:3001",
+        default="http://localhost:3002",
         description="SSE Gateway base URL for internal send endpoint"
     )
     SSE_CALLBACK_SECRET: str = Field(
@@ -286,7 +286,7 @@ class Settings(BaseModel):
 
     frontend_version_url: str = "http://localhost:3000/version.json"
     sse_heartbeat_interval: int = 5  # Resolved: 30 for production via load()
-    sse_gateway_url: str = "http://localhost:3001"
+    sse_gateway_url: str = "http://localhost:3002"
     sse_callback_secret: str = ""
 
     @property
