@@ -2,10 +2,12 @@
 
 from dependency_injector.wiring import Provide, inject
 from flask import Blueprint, Response, jsonify, request
+from spectree import Response as SpectreeResponse
 
-from app.schemas.item_schema import ItemCreate, ItemUpdate
+from app.schemas.item_schema import ItemCreate, ItemResponse, ItemUpdate
 from app.services.container import ServiceContainer
 from app.services.item_service import ItemService
+from app.utils.spectree_config import api
 
 items_bp = Blueprint("items", __name__, url_prefix="/items")
 
@@ -34,6 +36,7 @@ def list_items(
 
 
 @items_bp.route("", methods=["POST"])
+@api.validate(json=ItemCreate, resp=SpectreeResponse(HTTP_201=ItemResponse))
 @inject
 def create_item(
     item_service: ItemService = Provide[ServiceContainer.item_service],
@@ -74,6 +77,7 @@ def get_item(
 
 
 @items_bp.route("/<int:item_id>", methods=["PATCH"])
+@api.validate(json=ItemUpdate, resp=SpectreeResponse(HTTP_200=ItemResponse))
 @inject
 def update_item(
     item_id: int,
