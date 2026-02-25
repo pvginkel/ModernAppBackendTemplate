@@ -5,4 +5,4 @@ conftest_infrastructure.py. Add app-specific domain fixtures below.
 """
 
 # Import all infrastructure fixtures
-from tests.conftest_infrastructure import *  # noqa: F401, F403
+from tests.conftest_infrastructure import *  # noqa: F403

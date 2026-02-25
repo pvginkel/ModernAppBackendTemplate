@@ -4,12 +4,12 @@ import logging
 import re
 from pathlib import Path
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from sqlalchemy import MetaData, text
 from sqlalchemy.engine import Engine
 
 from alembic import command
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.config import Settings
 from app.extensions import db
 
