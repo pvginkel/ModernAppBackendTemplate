@@ -211,6 +211,16 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.api.testing_content import testing_content_bp
     app.register_blueprint(testing_content_bp)
 
+    # --- Role-based access startup hooks ---
+    # Validate @allow_roles decorators against configured roles (fail fast on typos)
+    if settings.oidc_enabled:
+        from app.utils.auth import validate_allow_roles_at_startup
+        validate_allow_roles_at_startup(app, container.auth_service())
+
+    # Annotate OpenAPI spec with per-endpoint security information
+    from app.utils.spectree_config import annotate_openapi_security
+    annotate_openapi_security(app)
+
     @app.teardown_request
     def close_session(exc: Exception | None) -> None:
         """Close the database session after each request.

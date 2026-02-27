@@ -1,12 +1,13 @@
 """Tests for authentication utilities including decorators, token utilities, and state serialization."""
 
 import time
+from unittest.mock import MagicMock
 
 import jwt
 import pytest
 
 from app.exceptions import AuthorizationException, ValidationException
-from app.services.auth_service import AuthContext
+from app.services.auth_service import AuthContext, AuthService
 from app.services.oidc_client_service import AuthState
 from app.utils.auth import (
     PendingTokenRefresh,
@@ -19,6 +20,13 @@ from app.utils.auth import (
     serialize_auth_state,
     validate_redirect_url,
 )
+
+
+def _make_auth_service(*additional_roles: str) -> AuthService:
+    """Create a minimal AuthService (OIDC disabled) with the given additional_roles."""
+    config = MagicMock()
+    config.oidc_enabled = False
+    return AuthService(config=config, additional_roles=list(additional_roles) if additional_roles else None)
 
 
 class TestGetTokenExpirySeconds:
@@ -175,12 +183,13 @@ class TestAllowRolesDecorator:
 class TestCheckAuthorization:
     """Test suite for check_authorization function.
 
-    Uses authenticated-only default: any valid token passes unless
-    @allow_roles is explicitly set on the endpoint.
+    Uses method-based role inference: GET -> read_role, POST -> write_role.
+    @allow_roles overrides method inference completely.
     """
 
-    def test_authenticated_user_passes_without_allow_roles(self):
-        """Test that any authenticated user passes when no @allow_roles is set."""
+    def test_authenticated_user_passes_without_roles_configured(self):
+        """Test that any authenticated user passes when no roles are configured."""
+        auth_service = _make_auth_service()
         auth_context = AuthContext(
             subject="regular-user",
             email="user@example.com",
@@ -188,10 +197,11 @@ class TestCheckAuthorization:
             roles={"some-role"},
         )
 
-        check_authorization(auth_context, view_func=None)
+        check_authorization(auth_context, auth_service, "GET", view_func=None)
 
     def test_authenticated_user_with_any_role_passes(self):
-        """Test that a user with any role passes the default check."""
+        """Test that a user with any role passes when no role gate is configured."""
+        auth_service = _make_auth_service()
 
         def regular_endpoint():
             pass
@@ -203,10 +213,11 @@ class TestCheckAuthorization:
             roles={"custom-role"},
         )
 
-        check_authorization(auth_context, view_func=regular_endpoint)
+        check_authorization(auth_context, auth_service, "GET", view_func=regular_endpoint)
 
-    def test_empty_roles_passes_without_allow_roles(self):
-        """Test that a user with no roles still passes the default check."""
+    def test_empty_roles_passes_without_roles_configured(self):
+        """Test that a user with no roles still passes when no role gate is configured."""
+        auth_service = _make_auth_service()
         auth_context = AuthContext(
             subject="no-role-user",
             email="norole@example.com",
@@ -214,10 +225,11 @@ class TestCheckAuthorization:
             roles=set(),
         )
 
-        check_authorization(auth_context, view_func=None)
+        check_authorization(auth_context, auth_service, "GET", view_func=None)
 
     def test_allowed_role_grants_access(self):
         """Test that a role listed in @allow_roles grants access."""
+        auth_service = _make_auth_service("editor")
 
         @allow_roles("editor")
         def editor_endpoint():
@@ -230,10 +242,11 @@ class TestCheckAuthorization:
             roles={"editor"},
         )
 
-        check_authorization(auth_context, view_func=editor_endpoint)
+        check_authorization(auth_context, auth_service, "GET", view_func=editor_endpoint)
 
     def test_one_of_multiple_allowed_roles_grants_access(self):
         """Test that having one of multiple allowed roles grants access."""
+        auth_service = _make_auth_service("editor", "viewer", "admin")
 
         @allow_roles("editor", "viewer", "admin")
         def multi_role_endpoint():
@@ -246,10 +259,11 @@ class TestCheckAuthorization:
             roles={"viewer"},
         )
 
-        check_authorization(auth_context, view_func=multi_role_endpoint)
+        check_authorization(auth_context, auth_service, "GET", view_func=multi_role_endpoint)
 
     def test_no_matching_role_denied_with_allow_roles(self):
         """Test that a user without a matching role is denied when @allow_roles is set."""
+        auth_service = _make_auth_service("admin", "viewer")
 
         @allow_roles("admin")
         def admin_endpoint():
@@ -263,12 +277,13 @@ class TestCheckAuthorization:
         )
 
         with pytest.raises(AuthorizationException) as exc_info:
-            check_authorization(auth_context, view_func=admin_endpoint)
+            check_authorization(auth_context, auth_service, "GET", view_func=admin_endpoint)
 
         assert "admin" in str(exc_info.value)
 
     def test_empty_roles_denied_with_allow_roles(self):
         """Test that a user with no roles is denied when @allow_roles is set."""
+        auth_service = _make_auth_service("editor")
 
         @allow_roles("editor")
         def editor_endpoint():
@@ -282,10 +297,11 @@ class TestCheckAuthorization:
         )
 
         with pytest.raises(AuthorizationException):
-            check_authorization(auth_context, view_func=editor_endpoint)
+            check_authorization(auth_context, auth_service, "GET", view_func=editor_endpoint)
 
     def test_error_message_lists_required_roles(self):
         """Test error message format when endpoint has @allow_roles."""
+        auth_service = _make_auth_service("editor", "admin", "viewer")
 
         @allow_roles("editor", "admin")
         def restricted_endpoint():
@@ -299,7 +315,7 @@ class TestCheckAuthorization:
         )
 
         with pytest.raises(AuthorizationException) as exc_info:
-            check_authorization(auth_context, view_func=restricted_endpoint)
+            check_authorization(auth_context, auth_service, "GET", view_func=restricted_endpoint)
 
         error_msg = str(exc_info.value)
         assert "admin" in error_msg

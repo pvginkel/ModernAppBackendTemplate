@@ -72,12 +72,30 @@ def public(func: Callable[..., Any]) -> Callable[..., Any]:
     return func
 
 
+def safe_query(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator to mark a POST endpoint as a read-only query.
+
+    By default, POST endpoints require write_role. This decorator overrides
+    method-based inference so the endpoint only requires read_role, which is
+    appropriate for POST-as-query endpoints that accept a JSON body for
+    filtering but do not mutate data.
+
+    Usage:
+        @some_bp.route("/query", methods=["POST"])
+        @safe_query
+        def search_items():
+            return {"results": [...]}
+    """
+    func.is_safe_query = True  # type: ignore[attr-defined]
+    return func
+
+
 def allow_roles(*roles: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to restrict endpoint access to specific roles.
 
-    When OIDC is enabled, the default authorization policy is authenticated-only
-    (any valid token passes). This decorator adds role enforcement: only users
-    with at least one of the listed roles are allowed.
+    This is a complete override of method-based role inference. The user must
+    have at least one of the listed roles regardless of HTTP method. Role
+    names are validated at startup against AuthService.configured_roles.
 
     Args:
         *roles: Role names that are allowed to access this endpoint
@@ -131,42 +149,66 @@ def extract_token_from_request(config: Settings) -> str | None:
     return None
 
 
-def check_authorization(auth_context: AuthContext, view_func: Callable[..., Any] | None = None) -> None:
+def check_authorization(
+    auth_context: AuthContext,
+    auth_service: AuthService,
+    http_method: str,
+    view_func: Callable[..., Any] | None = None,
+) -> None:
     """Check if user has required authorization for the current request.
 
-    Authorization rules (EI-specific, different from IoTSupport):
-    - Default: authenticated-only (any valid token passes, no role check)
-    - When @allow_roles is set: user must have at least one of the listed roles
+    Authorization uses method-based role inference by default:
+      - GET/HEAD -> read_role
+      - POST/PUT/PATCH/DELETE -> write_role
+      - @safe_query on POST -> read_role (override)
+      - @allow_roles -> explicit role set (complete override)
+
+    When OIDC is enabled and no recognized role can be resolved, a blanket
+    403 is returned.
 
     Args:
-        auth_context: Authenticated user context
-        view_func: The view function being called (to check for @allow_roles decorator)
+        auth_context: Authenticated user context (roles already hierarchy-expanded)
+        auth_service: AuthService for role resolution
+        http_method: The HTTP method of the request (e.g. "GET", "POST")
+        view_func: The view function being called (checked for decorator attributes)
 
     Raises:
         AuthorizationException: If user lacks required permissions
     """
-    # Check for role restrictions from @allow_roles decorator
-    if view_func is not None:
-        allowed_roles: set[str] = getattr(view_func, "allowed_roles", set())
-        if allowed_roles:
-            # Role enforcement is active: user must have at least one allowed role
-            for role in allowed_roles:
-                if role in auth_context.roles:
-                    logger.debug("User has '%s' role - access granted via @allow_roles", role)
-                    return
+    # Resolve the required role(s) for this request
+    required = auth_service.resolve_required_role(http_method, view_func)
 
-            # User has no matching role
-            raise AuthorizationException(
-                f"Insufficient permissions - requires one of: {', '.join(sorted(allowed_roles))}"
-            )
+    if required is None:
+        # No role gate for this tier — any authenticated user passes
+        logger.debug("No role gate configured for this endpoint — access granted")
+        return
 
-    # No @allow_roles set: authenticated-only (any valid token passes)
-    logger.debug("No role restriction - authenticated user granted access")
+    # Normalize to a set for uniform checking
+    required_roles: set[str] = required if isinstance(required, set) else {required}
+
+    # Check if user has at least one of the required roles
+    if auth_context.roles & required_roles:
+        logger.debug(
+            "User authorized: has %s, requires one of %s",
+            auth_context.roles & required_roles,
+            required_roles,
+        )
+        return
+
+    # Blanket 403 if user has no recognized role at all
+    if not (auth_context.roles & auth_service.configured_roles):
+        raise AuthorizationException("No recognized role -- access denied")
+
+    # User is recognized but lacks the specific required role
+    raise AuthorizationException(
+        f"Insufficient permissions - requires one of: {', '.join(sorted(required_roles))}"
+    )
 
 
 def authenticate_request(
     auth_service: AuthService,
     config: Settings,
+    http_method: str,
     oidc_client_service: OidcClientService | None = None,
     view_func: Callable[..., Any] | None = None,
 ) -> None:
@@ -180,6 +222,7 @@ def authenticate_request(
     Args:
         auth_service: AuthService instance for token validation
         config: Application settings
+        http_method: The HTTP method of the request (e.g. "GET", "POST")
         oidc_client_service: OidcClientService for token refresh (optional)
         view_func: The view function being called (to check for @allow_roles decorator)
 
@@ -195,7 +238,7 @@ def authenticate_request(
         try:
             auth_context = auth_service.validate_token(access_token)
             g.auth_context = auth_context
-            check_authorization(auth_context, view_func)
+            check_authorization(auth_context, auth_service, http_method, view_func)
             logger.info(
                 "Request authenticated: subject=%s email=%s roles=%s",
                 auth_context.subject,
@@ -246,7 +289,7 @@ def authenticate_request(
         access_token_expires_in=new_tokens.expires_in,
     )
 
-    check_authorization(auth_context, view_func)
+    check_authorization(auth_context, auth_service, http_method, view_func)
 
     logger.info(
         "Request authenticated (after refresh): subject=%s email=%s roles=%s",
@@ -318,6 +361,32 @@ def get_cookie_secure(config: Settings) -> bool:
         True if cookies should use Secure flag, False otherwise
     """
     return config.oidc_cookie_secure
+
+
+def validate_allow_roles_at_startup(app: Any, auth_service: AuthService) -> None:
+    """Validate that all @allow_roles decorators reference configured roles.
+
+    Called once at startup after all blueprints are registered and the
+    container is wired. Raises ValueError to prevent the app from starting
+    with misconfigured role names (catches typos early).
+
+    Args:
+        app: The Flask application instance
+        auth_service: AuthService with configured_roles
+
+    Raises:
+        ValueError: If any endpoint uses an unrecognized role name
+    """
+    configured = auth_service.configured_roles
+    for endpoint_name, view_func in app.view_functions.items():
+        allowed: set[str] = getattr(view_func, "allowed_roles", set())
+        unknown = allowed - configured
+        if unknown:
+            raise ValueError(
+                f"Endpoint '{endpoint_name}' uses @allow_roles with "
+                f"unrecognized roles: {sorted(unknown)}. "
+                f"Configured roles are: {sorted(configured)}"
+            )
 
 
 def validate_redirect_url(redirect_url: str, base_url: str) -> None:

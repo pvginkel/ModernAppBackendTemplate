@@ -73,15 +73,17 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
                 test_session = testing_service.get_session(token)
                 if test_session:
                     logger.debug("Test session authenticated: subject=%s", test_session.subject)
+                    # Expand roles through the hierarchy (same as OIDC path)
+                    expanded_roles = auth_service.expand_roles(set(test_session.roles))
                     auth_context = AuthContext(
                         subject=test_session.subject,
                         email=test_session.email,
                         name=test_session.name,
-                        roles=set(test_session.roles),
+                        roles=expanded_roles,
                     )
                     g.auth_context = auth_context
                     try:
-                        check_authorization(auth_context, actual_func)
+                        check_authorization(auth_context, auth_service, request.method, actual_func)
                         return None
                     except AuthorizationException as e:
                         logger.warning("Authorization failed: %s", str(e))
@@ -95,7 +97,7 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
         # Authenticate the request (may trigger token refresh)
         logger.debug("Authenticating request to %s %s", request.method, request.path)
         try:
-            authenticate_request(auth_service, config, oidc_client_service, actual_func)
+            authenticate_request(auth_service, config, request.method, oidc_client_service, actual_func)
             return None
         except AuthenticationException as e:
             logger.warning("Authentication failed: %s", str(e))
@@ -171,7 +173,7 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
     # Register auth blueprint (OIDC login/logout/callback endpoints)
     from app.api.auth import auth_bp
 
-    api_bp.register_blueprint(auth_bp)
+    api_bp.register_blueprint(auth_bp)  # type: ignore[attr-defined]
 
 
 def _clear_auth_cookies(response: Response, config: Settings, cookie_secure: bool) -> None:

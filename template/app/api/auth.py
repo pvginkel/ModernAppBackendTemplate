@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field
 from spectree import Response as SpectreeResponse
 
 from app.config import Settings
-from app.exceptions import AuthenticationException, ValidationException
+from app.exceptions import (
+    AuthenticationException,
+    AuthorizationException,
+    ValidationException,
+)
 from app.services.auth_service import AuthService
 from app.services.container import ServiceContainer
 from app.services.oidc_client_service import OidcClientService
@@ -57,6 +61,7 @@ def get_current_user(
     Returns:
         200: User information from validated token or test session
         401: No valid token provided or token invalid
+        403: User authenticated but has no recognized hierarchical role
     """
     # In testing mode, handle test sessions and forced errors
     if config.is_testing:
@@ -76,11 +81,18 @@ def get_current_user(
         if token and token.startswith("test-session-"):
             test_session = testing_service.get_session(token)
             if test_session:
+                expanded_roles = auth_service.expand_roles(set(test_session.roles))
+
+                # If hierarchical roles are configured and user has none, reject
+                hierarchy = auth_service.hierarchy_roles
+                if hierarchy and not (expanded_roles & hierarchy):
+                    raise AuthorizationException("No recognized role -- access denied")
+
                 user_info = UserInfoResponseSchema(
                     subject=test_session.subject,
                     email=test_session.email,
                     name=test_session.name,
-                    roles=sorted(test_session.roles),
+                    roles=sorted(expanded_roles),
                 )
                 logger.info(
                     "Returned test session user info for subject=%s",
@@ -92,12 +104,15 @@ def get_current_user(
         # so existing tests without explicit sessions still get local-user.
 
     # When OIDC is disabled, return a default "local" user
+    # Expand roles through hierarchy so the frontend sees the same shape
+    # as it would with OIDC enabled (e.g. admin -> [admin, editor, reader]).
     if not config.oidc_enabled:
+        local_roles = auth_service.expand_roles({"admin"})
         return UserInfoResponseSchema(
             subject="local-user",
             email="admin@local",
             name="Local Admin",
-            roles=["admin"],
+            roles=sorted(local_roles),
         ).model_dump(), 200
 
     # OIDC enabled: try auth_context (set by before_request hook).
@@ -112,6 +127,13 @@ def get_current_user(
             raise AuthenticationException("No valid token provided")
 
         auth_context = auth_service.validate_token(token)
+
+    # If hierarchical roles are configured and user has none, reject.
+    # This lets the frontend distinguish "not logged in" (401) from
+    # "logged in but no access" (403) and show an appropriate screen.
+    hierarchy = auth_service.hierarchy_roles
+    if hierarchy and not (auth_context.roles & hierarchy):
+        raise AuthorizationException("No recognized role -- access denied")
 
     # Return user information
     user_info = UserInfoResponseSchema(
