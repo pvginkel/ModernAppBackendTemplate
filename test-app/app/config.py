@@ -415,7 +415,7 @@ class Settings(BaseModel):
             diagnostics_log_all_queries=env.DIAGNOSTICS_LOG_ALL_QUERIES,
             sqlalchemy_engine_options=sqlalchemy_engine_options,
             # use_oidc
-            baseurl=env.BASEURL,
+            baseurl=env.BASEURL.rstrip("/"),
             oidc_enabled=env.OIDC_ENABLED,
             oidc_issuer_url=env.OIDC_ISSUER_URL,
             oidc_client_id=env.OIDC_CLIENT_ID,
