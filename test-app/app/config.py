@@ -166,6 +166,10 @@ class Environment(BaseSettings):
         default="Lax",
         description="SameSite attribute for cookie"
     )
+    OIDC_COOKIE_PARTITIONED: bool = Field(
+        default=False,
+        description="Partitioned (CHIPS) attribute for cookies, needed for cross-origin iframe embedding"
+    )
     OIDC_REFRESH_COOKIE_NAME: str = Field(
         default="refresh_token",
         description="Cookie name for storing refresh token"
@@ -271,6 +275,7 @@ class Settings(BaseModel):
     oidc_cookie_name: str = "access_token"
     oidc_cookie_secure: bool = False  # Resolved: inferred from baseurl via load()
     oidc_cookie_samesite: str = "Lax"
+    oidc_cookie_partitioned: bool = False
     oidc_refresh_cookie_name: str = "refresh_token"
 
     # ── use_s3 ─────────────────────────────────────────────────────────
@@ -426,6 +431,7 @@ class Settings(BaseModel):
             oidc_cookie_name=env.OIDC_COOKIE_NAME,
             oidc_cookie_secure=oidc_cookie_secure,
             oidc_cookie_samesite=env.OIDC_COOKIE_SAMESITE,
+            oidc_cookie_partitioned=env.OIDC_COOKIE_PARTITIONED,
             oidc_refresh_cookie_name=env.OIDC_REFRESH_COOKIE_NAME,
             # use_s3
             s3_endpoint_url=env.S3_ENDPOINT_URL,

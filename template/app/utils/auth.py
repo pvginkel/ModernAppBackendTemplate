@@ -8,8 +8,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
 from flask import g, request
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app.config import Settings
 from app.exceptions import (
@@ -299,68 +299,92 @@ def authenticate_request(
     )
 
 
+def _derive_fernet_key(secret_key: str) -> bytes:
+    """Derive a Fernet-compatible key from the application secret key.
+
+    Args:
+        secret_key: Application secret key (arbitrary string)
+
+    Returns:
+        32-byte base64-encoded key suitable for Fernet
+    """
+    import base64
+    import hashlib
+
+    # SHA-256 produces 32 bytes, which is what Fernet expects (after base64 encoding)
+    raw = hashlib.sha256(secret_key.encode()).digest()
+    return base64.urlsafe_b64encode(raw)
+
+
 def serialize_auth_state(auth_state: AuthState, secret_key: str) -> str:
-    """Serialize and sign AuthState for storage in cookie.
+    """Serialize and encrypt AuthState for use as the OAuth state parameter.
+
+    Uses Fernet symmetric encryption so that the code_verifier (PKCE secret)
+    is not readable in the URL.  The encrypted token embeds a timestamp that
+    ``deserialize_auth_state`` checks against *max_age*.
 
     Args:
         auth_state: AuthState to serialize
-        secret_key: Secret key for signing
+        secret_key: Secret key for encryption
 
     Returns:
-        Signed serialized auth state string
+        URL-safe encrypted auth state string
     """
-    serializer = URLSafeTimedSerializer(secret_key)
-    data = {
+    import json
+
+    fernet = Fernet(_derive_fernet_key(secret_key))
+    data = json.dumps({
         "code_verifier": auth_state.code_verifier,
         "redirect_url": auth_state.redirect_url,
         "nonce": auth_state.nonce,
-    }
-    return serializer.dumps(data)
+    }).encode()
+    return fernet.encrypt(data).decode("ascii")
 
 
-def deserialize_auth_state(signed_data: str, secret_key: str, max_age: int = 600) -> AuthState:
-    """Deserialize and verify AuthState from signed cookie.
+def deserialize_auth_state(encrypted_data: str, secret_key: str, max_age: int = 600) -> AuthState:
+    """Decrypt and deserialize AuthState from the OAuth state parameter.
 
     Args:
-        signed_data: Signed serialized auth state
-        secret_key: Secret key for verification
+        encrypted_data: Encrypted auth state (from the ``state`` query parameter)
+        secret_key: Secret key for decryption
         max_age: Maximum age in seconds (default 10 minutes)
 
     Returns:
         AuthState instance
 
     Raises:
-        ValidationException: If signature is invalid or data expired
+        ValidationException: If decryption fails, data expired, or payload is malformed
     """
-    serializer = URLSafeTimedSerializer(secret_key)
+    import json
+
+    fernet = Fernet(_derive_fernet_key(secret_key))
     try:
-        data = serializer.loads(signed_data, max_age=max_age)
+        plaintext = fernet.decrypt(encrypted_data.encode("ascii"), ttl=max_age)
+        data = json.loads(plaintext)
         return AuthState(
             code_verifier=data["code_verifier"],
             redirect_url=data["redirect_url"],
             nonce=data["nonce"],
         )
-    except SignatureExpired as e:
-        raise ValidationException("Authentication state expired") from e
-    except BadSignature as e:
-        raise ValidationException("Invalid authentication state") from e
-    except (KeyError, TypeError) as e:
+    except InvalidToken as e:
+        # Fernet raises InvalidToken for bad key, bad data, OR expired TTL
+        raise ValidationException("Invalid or expired authentication state") from e
+    except (KeyError, TypeError, json.JSONDecodeError) as e:
         raise ValidationException("Malformed authentication state") from e
 
 
-def get_cookie_secure(config: Settings) -> bool:
-    """Determine if cookies should use Secure flag.
+def get_cookie_kwargs(config: Settings) -> dict[str, Any]:
+    """Return the common keyword arguments for ``response.set_cookie()``.
 
-    In the config system, oidc_cookie_secure is always resolved
-    (either explicit or inferred from baseurl), so we just return it.
-
-    Args:
-        config: Application settings
-
-    Returns:
-        True if cookies should use Secure flag, False otherwise
+    Centralises httponly / secure / samesite / partitioned so that every
+    call-site stays consistent.
     """
-    return config.oidc_cookie_secure
+    return {
+        "httponly": True,
+        "secure": config.oidc_cookie_secure,
+        "samesite": config.oidc_cookie_samesite,
+        "partitioned": config.oidc_cookie_partitioned,
+    }
 
 
 def validate_allow_roles_at_startup(app: Any, auth_service: AuthService) -> None:

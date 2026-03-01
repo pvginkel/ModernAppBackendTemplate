@@ -14,7 +14,7 @@ from app.utils.auth import (
     allow_roles,
     check_authorization,
     deserialize_auth_state,
-    get_cookie_secure,
+    get_cookie_kwargs,
     get_token_expiry_seconds,
     public,
     serialize_auth_state,
@@ -364,24 +364,44 @@ class TestSerializeDeserializeAuthState:
             deserialize_auth_state("", "test-secret-key")
 
 
-class TestGetCookieSecure:
-    """Test suite for get_cookie_secure utility."""
+class TestGetCookieKwargs:
+    """Test suite for get_cookie_kwargs utility."""
 
-    def test_returns_setting_value_true(self):
-        """Test returns True when oidc_cookie_secure is True."""
+    def test_returns_expected_keys(self):
+        """Test that get_cookie_kwargs returns the expected keys."""
         from app.config import Settings
 
-        settings = Settings(oidc_cookie_secure=True)
+        settings = Settings(oidc_cookie_secure=True, oidc_cookie_samesite="Strict")
 
-        assert get_cookie_secure(settings) is True
+        kw = get_cookie_kwargs(settings)
 
-    def test_returns_setting_value_false(self):
-        """Test returns False when oidc_cookie_secure is False."""
+        assert set(kw.keys()) == {"httponly", "secure", "samesite", "partitioned"}
+
+    def test_reflects_secure_and_samesite_settings(self):
+        """Test that cookie kwargs reflect config values."""
         from app.config import Settings
 
-        settings = Settings(oidc_cookie_secure=False)
+        settings = Settings(oidc_cookie_secure=True, oidc_cookie_samesite="None", oidc_cookie_partitioned=True)
 
-        assert get_cookie_secure(settings) is False
+        kw = get_cookie_kwargs(settings)
+
+        assert kw["httponly"] is True
+        assert kw["secure"] is True
+        assert kw["samesite"] == "None"
+        assert kw["partitioned"] is True
+
+    def test_defaults(self):
+        """Test default cookie kwargs."""
+        from app.config import Settings
+
+        settings = Settings()
+
+        kw = get_cookie_kwargs(settings)
+
+        assert kw["httponly"] is True
+        assert kw["secure"] is False
+        assert kw["samesite"] == "Lax"
+        assert kw["partitioned"] is False
 
 
 class TestValidateRedirectUrl:

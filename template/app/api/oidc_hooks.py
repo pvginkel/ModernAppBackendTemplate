@@ -12,7 +12,7 @@ from app.services.oidc_client_service import OidcClientService
 from app.services.testing_service import TestingService
 from app.utils.auth import (
     authenticate_request,
-    get_cookie_secure,
+    get_cookie_kwargs,
     get_token_expiry_seconds,
 )
 
@@ -128,13 +128,13 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
 
         # Check if we need to clear cookies (refresh failed)
         if getattr(g, "clear_auth_cookies", False):
-            _clear_auth_cookies(response, config, get_cookie_secure(config))
+            _clear_auth_cookies(response, config)
             return response
 
         # Check if we have pending tokens from a refresh
         pending = getattr(g, "pending_token_refresh", None)
         if pending:
-            cookie_secure = get_cookie_secure(config)
+            cookie_kw = get_cookie_kwargs(config)
 
             # Validate refresh token exp before setting any cookies
             refresh_max_age: int | None = None
@@ -142,17 +142,15 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
                 refresh_max_age = get_token_expiry_seconds(pending.refresh_token)
                 if refresh_max_age is None:
                     logger.error("Refreshed token missing 'exp' claim — clearing auth cookies")
-                    _clear_auth_cookies(response, config, cookie_secure)
+                    _clear_auth_cookies(response, config)
                     return response
 
             # Set new access token cookie
             response.set_cookie(
                 config.oidc_cookie_name,
                 pending.access_token,
-                httponly=True,
-                secure=cookie_secure,
-                samesite=config.oidc_cookie_samesite,
                 max_age=pending.access_token_expires_in,
+                **cookie_kw,
             )
 
             # Set new refresh token cookie (if provided and validated above)
@@ -160,10 +158,8 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
                 response.set_cookie(
                     config.oidc_refresh_cookie_name,
                     pending.refresh_token,
-                    httponly=True,
-                    secure=cookie_secure,
-                    samesite=config.oidc_cookie_samesite,
                     max_age=refresh_max_age,
+                    **cookie_kw,
                 )
 
             logger.debug("Set refreshed auth cookies on response")
@@ -176,14 +172,8 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
     api_bp.register_blueprint(auth_bp)  # type: ignore[attr-defined]
 
 
-def _clear_auth_cookies(response: Response, config: Settings, cookie_secure: bool) -> None:
+def _clear_auth_cookies(response: Response, config: Settings) -> None:
     """Clear all auth cookies on the response."""
+    cookie_kw = get_cookie_kwargs(config)
     for name in (config.oidc_cookie_name, config.oidc_refresh_cookie_name, "id_token"):
-        response.set_cookie(
-            name,
-            "",
-            httponly=True,
-            secure=cookie_secure,
-            samesite=config.oidc_cookie_samesite,
-            max_age=0,
-        )
+        response.set_cookie(name, "", max_age=0, **cookie_kw)

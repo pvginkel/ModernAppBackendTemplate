@@ -189,41 +189,49 @@ class OidcClientService:
 
         return challenge
 
-    def generate_authorization_url(
-        self, redirect_url: str
-    ) -> tuple[str, AuthState]:
-        """Generate OIDC authorization URL with PKCE.
+    def create_auth_state(self, redirect_url: str) -> AuthState:
+        """Create PKCE auth state for a new login flow.
+
+        Generates a random code verifier and nonce.  The caller is responsible
+        for persisting the returned state (e.g. by encrypting it into the
+        OAuth ``state`` parameter).
 
         Args:
             redirect_url: URL to redirect to after successful authentication
 
         Returns:
-            Tuple of (authorization_url, auth_state)
+            AuthState with fresh PKCE parameters
         """
-        # Generate PKCE code verifier (43-128 characters, no padding)
         code_verifier = secrets.token_urlsafe(32)
-        code_challenge = self.generate_pkce_challenge(code_verifier)
-
-        # Generate random nonce for CSRF protection
         nonce = secrets.token_urlsafe(32)
-
-        # Create auth state
-        auth_state = AuthState(
+        return AuthState(
             code_verifier=code_verifier,
             redirect_url=redirect_url,
             nonce=nonce,
         )
 
-        # Construct redirect URI
+    def build_authorization_url(
+        self, auth_state: AuthState, state_value: str
+    ) -> str:
+        """Build the OIDC authorization URL for the given auth state.
+
+        Args:
+            auth_state: AuthState containing the PKCE code verifier
+            state_value: Value for the OAuth ``state`` query parameter
+                (typically the encrypted auth state blob)
+
+        Returns:
+            Full authorization URL to redirect the user to
+        """
+        code_challenge = self.generate_pkce_challenge(auth_state.code_verifier)
         redirect_uri = f"{self.config.baseurl}/api/auth/callback"
 
-        # Build authorization URL with parameters
         params = {
             "client_id": self.config.oidc_client_id,
             "response_type": "code",
             "redirect_uri": redirect_uri,
             "scope": self.config.oidc_scopes,
-            "state": nonce,
+            "state": state_value,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
         }
@@ -232,10 +240,28 @@ class OidcClientService:
 
         logger.info(
             "Generated authorization URL for redirect=%s nonce=%s",
-            redirect_url,
-            nonce,
+            auth_state.redirect_url,
+            auth_state.nonce,
         )
 
+        return authorization_url
+
+    def generate_authorization_url(
+        self, redirect_url: str
+    ) -> tuple[str, AuthState]:
+        """Generate OIDC authorization URL with PKCE.
+
+        Convenience wrapper that creates auth state, uses the nonce as
+        the OAuth ``state`` parameter, and returns both.
+
+        Args:
+            redirect_url: URL to redirect to after successful authentication
+
+        Returns:
+            Tuple of (authorization_url, auth_state)
+        """
+        auth_state = self.create_auth_state(redirect_url)
+        authorization_url = self.build_authorization_url(auth_state, auth_state.nonce)
         return authorization_url, auth_state
 
     def exchange_code_for_tokens(

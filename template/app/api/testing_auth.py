@@ -19,7 +19,7 @@ from app.schemas.testing_auth import (
 )
 from app.services.container import ServiceContainer
 from app.services.testing_service import TestingService
-from app.utils.auth import get_cookie_secure, public
+from app.utils.auth import get_cookie_kwargs, public
 from app.utils.spectree_config import api
 
 logger = logging.getLogger(__name__)
@@ -69,18 +69,14 @@ def create_test_session(
         roles=data.roles,
     )
 
-    cookie_secure = get_cookie_secure(config)
-
     response = make_response(response_data.model_dump(), 201)
 
     # Set the same cookie that the real OIDC callback would set
     response.set_cookie(
         config.oidc_cookie_name,
         token,
-        httponly=True,
-        secure=cookie_secure,
-        samesite=config.oidc_cookie_samesite,
         max_age=3600,  # 1 hour for test sessions
+        **get_cookie_kwargs(config),
     )
 
     logger.info(
@@ -110,17 +106,13 @@ def clear_test_session(
     if token:
         testing_service.clear_session(token)
 
-    cookie_secure = get_cookie_secure(config)
-
     response = make_response("", 204)
 
     response.set_cookie(
         config.oidc_cookie_name,
         "",
-        httponly=True,
-        secure=cookie_secure,
-        samesite=config.oidc_cookie_samesite,
         max_age=0,
+        **get_cookie_kwargs(config),
     )
 
     logger.info("Cleared test session")
