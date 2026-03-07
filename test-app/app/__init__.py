@@ -5,6 +5,7 @@ import sys
 
 from flask import g
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.app import App
 from app.app_config import AppSettings
@@ -264,5 +265,12 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
         # Signal that application startup is complete. Services that registered
         # for STARTUP notifications will be invoked here.
         container.lifecycle_coordinator().fire_startup()
+
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_proto=1,
+        x_host=1,
+        x_for=1,
+    )
 
     return app

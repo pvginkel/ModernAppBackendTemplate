@@ -197,9 +197,20 @@ def check_authorization(
 
     # Blanket 403 if user has no recognized role at all
     if not (auth_context.roles & auth_service.configured_roles):
+        logger.debug(
+            "No recognized role: user_roles=%s, configured_roles=%s, required_roles=%s",
+            auth_context.roles,
+            auth_service.configured_roles,
+            required_roles,
+        )
         raise AuthorizationException("No recognized role -- access denied")
 
     # User is recognized but lacks the specific required role
+    logger.debug(
+        "Insufficient permissions: user_roles=%s, required_roles=%s",
+        auth_context.roles,
+        required_roles,
+    )
     raise AuthorizationException(
         f"Insufficient permissions - requires one of: {', '.join(sorted(required_roles))}"
     )

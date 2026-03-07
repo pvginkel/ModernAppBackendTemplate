@@ -66,7 +66,15 @@ def main() -> None:
             # we match Waitress threads to avoid silent connection pool queuing.
             threads = int(os.getenv("WAITRESS_THREADS", 50))
             wsgi.logger.info(f"Using Waitress WSGI server with {threads} threads")
-            serve(wsgi, host=host, port=port, threads=threads)
+            serve(
+                wsgi,
+                host=host,
+                port=port,
+                threads=threads,
+                trusted_proxy="*",
+                trusted_proxy_count=1,
+                trusted_proxy_headers="x-forwarded-for x-forwarded-proto x-forwarded-host",
+            )
 
         thread = threading.Thread(target=runner, daemon=True)
         thread.start()
