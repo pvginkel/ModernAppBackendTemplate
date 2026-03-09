@@ -83,6 +83,11 @@ use_sse:
   default: false
   help: "Include Server-Sent Events via SSE Gateway"
 
+validation_jenkins_job:
+  type: str
+  default: ""
+  help: "Jenkins validation job to trigger after build (empty = old build+deploy flow)"
+
 # ── Files generated once, never overwritten ───────────────────────────
 
 _skip_if_exists:

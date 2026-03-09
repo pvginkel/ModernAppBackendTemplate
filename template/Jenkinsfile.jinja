@@ -11,16 +11,40 @@ podTemplate(inheritFrom: 'jenkins-agent kaniko') {
         }
 
         stage("Building {{ project_name }}") {
+{% if validation_jenkins_job %}
+            def gitRev = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+
+            container('kaniko') {
+                helmCharts.kaniko([
+                    "{{ image_name }}:${currentBuild.number}"
+                ])
+            }
+
+            writeJSON file: 'backend-build.json', json: [tag: ":${currentBuild.number}", gitRev: gitRev]
+            archiveArtifacts artifacts: 'backend-build.json', fingerprint: true
+{% else %}
             container('kaniko') {
                 helmCharts.kaniko([
                     "{{ image_name }}:${currentBuild.number}",
                     "{{ image_name }}:latest"
                 ])
             }
+{% endif %}
         }
 
+{% if validation_jenkins_job %}
+        stage('Start validation') {
+            build job: '{{ validation_jenkins_job }}',
+                wait: false,
+                parameters: [
+                    string(name: 'BACKEND_BUILD', value: "${currentBuild.number}"),
+                    string(name: 'TRIGGERED_BY', value: 'backend')
+                ]
+        }
+{% else %}
         stage('Deploy Helm charts') {
             build job: 'HelmCharts', wait: false
         }
+{% endif %}
     }
 }
