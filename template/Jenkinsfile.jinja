@@ -1,6 +1,6 @@
 import org.jenkinsci.plugins.pipeline.modeldefinition.Utils
 
-library('JenkinsPipelineUtils') _
+library identifier: 'JenkinsPipelineUtils', changelog: false
 
 podTemplate(inheritFrom: 'jenkins-agent kaniko') {
     node(POD_LABEL) {
