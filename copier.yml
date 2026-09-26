@@ -104,6 +104,7 @@ _exclude:
   - "{% if not use_database %}alembic.ini{% endif %}"
   - "{% if not use_database %}alembic{% endif %}"
   - "{% if not use_database %}scripts/initialize-sqlite-database.sh{% endif %}"
+  - "{% if not use_database %}scripts/init-dev-database.py{% endif %}"
 
   # OIDC
   - "{% if not use_oidc %}app/api/auth.py{% endif %}"
