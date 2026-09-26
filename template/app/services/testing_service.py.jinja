@@ -31,8 +31,8 @@ class TestingService:
     Test session state is stored at the class level so it persists across
     Factory-created instances within the same process.
     """
-
 {% if use_s3 %}
+
     IMAGE_WIDTH = 400
     IMAGE_HEIGHT = 100
     IMAGE_BACKGROUND_COLOR = "#2478BD"
@@ -46,8 +46,8 @@ class TestingService:
 
     # Forced error status for /api/auth/self (single-shot)
     _forced_auth_error: int | None = None
-
 {% if use_s3 %}
+
     def __init__(self) -> None:
         self._cached_pdf_bytes: bytes | None = None
 {% endif %}
@@ -142,8 +142,8 @@ class TestingService:
         if error:
             logger.info("Consumed forced auth error: status=%d", error)
         return error
-
 {% if use_s3 %}
+
     # ── Content generation (requires Pillow — S3 feature) ────────────
 
     def create_fake_image(self, text: str) -> bytes:

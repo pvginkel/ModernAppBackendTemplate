@@ -23,8 +23,8 @@ api: SpecTree = None  # type: ignore
 
 # Security scheme name used across the OpenAPI spec
 BEARER_AUTH_SCHEME_NAME = "BearerAuth"
-
 {% if use_oidc %}
+
 # Regex to convert Flask path params to OpenAPI format:
 # <int:id>, <string:key>, <key> -> {id}, {key}, {key}
 _FLASK_PARAM_RE = re.compile(r"<(?:\w+:)?(\w+)>")
@@ -76,8 +76,8 @@ def configure_spectree(app: Flask) -> SpecTree:
         return redirect("/api/docs/swagger/", code=302)
 
     return api
-
 {% if use_oidc %}
+
 
 def annotate_openapi_security(app: Any) -> None:
     """Post-process the OpenAPI spec to add per-endpoint security annotations.
