@@ -2,7 +2,9 @@
 Spectree configuration with Pydantic v2 compatibility.
 """
 import logging
+{% if use_oidc %}
 import re
+{% endif %}
 from typing import Any
 
 from flask import Flask
@@ -22,9 +24,11 @@ api: SpecTree = None  # type: ignore
 # Security scheme name used across the OpenAPI spec
 BEARER_AUTH_SCHEME_NAME = "BearerAuth"
 
+{% if use_oidc %}
 # Regex to convert Flask path params to OpenAPI format:
 # <int:id>, <string:key>, <key> -> {id}, {key}, {key}
 _FLASK_PARAM_RE = re.compile(r"<(?:\w+:)?(\w+)>")
+{% endif %}
 
 
 def configure_spectree(app: Flask) -> SpecTree:
@@ -73,6 +77,7 @@ def configure_spectree(app: Flask) -> SpecTree:
 
     return api
 
+{% if use_oidc %}
 
 def annotate_openapi_security(app: Any) -> None:
     """Post-process the OpenAPI spec to add per-endpoint security annotations.
@@ -169,3 +174,4 @@ def annotate_openapi_security(app: Any) -> None:
             "Failed to annotate OpenAPI spec with security information",
             exc_info=True,
         )
+{% endif %}

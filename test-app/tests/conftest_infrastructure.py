@@ -57,6 +57,11 @@ def pytest_configure(config: pytest.Config) -> None:
         )
     try:
         urllib.request.urlopen(endpoint, timeout=3)
+    except urllib.error.HTTPError:
+        # Any HTTP response means the storage server is up and answering: MinIO
+        # replies to an anonymous GET / (ListBuckets) with 403, whereas Ceph RGW
+        # returns 200. Only the connection-level failures below mean "unreachable".
+        pass
     except (urllib.error.URLError, OSError, TimeoutError):
         pytest.exit(
             f"S3 storage is not reachable at {endpoint}. "

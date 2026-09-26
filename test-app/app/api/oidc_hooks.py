@@ -169,7 +169,7 @@ def register_oidc_hooks(api_bp: Blueprint) -> None:
     # Register auth blueprint (OIDC login/logout/callback endpoints)
     from app.api.auth import auth_bp
 
-    api_bp.register_blueprint(auth_bp)  # type: ignore[attr-defined]
+    api_bp.register_blueprint(auth_bp)
 
 
 def _clear_auth_cookies(response: Response, config: Settings) -> None:

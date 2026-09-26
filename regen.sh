@@ -19,8 +19,6 @@ poetry run copier copy . test-app --trust --defaults --vcs-ref HEAD \
   -d project_description="Test application" \
   -d author_name="Test Author" \
   -d author_email="test@example.com" \
-  -d repo_url="https://github.com/test/test-app.git" \
-  -d image_name="registry:5000/test-app" \
   -d backend_port=5000 \
   -d use_database=true \
   -d use_oidc=true \
@@ -40,13 +38,12 @@ cp test-app-domain/app/api/items.py test-app/app/api/
 cp -r test-app-domain/tests/* test-app/tests/
 mkdir -p test-app/alembic/versions
 cp test-app-domain/alembic/versions/001_create_items.py test-app/alembic/versions/
-echo "# Test App" > test-app/README.md
 
 echo "==> Copying .env.test..."
 cp .env.test test-app/.env.test
 
 echo "==> Installing dependencies..."
-cd test-app && poetry install -q
+cd test-app && poetry sync -q
 
 echo ""
 echo "Done. Run tests with:"

@@ -4,9 +4,9 @@ import sys
 
 import click
 from dotenv import load_dotenv
-from flask import Flask
 
 from app import create_app
+from app.app import App
 from app.database import (
     check_db_connection,
     get_current_revision,
@@ -49,7 +49,7 @@ def load_test_data(ctx: click.Context, yes_i_am_sure: bool) -> None:
 
 
 def handle_upgrade_db(
-    app: Flask, recreate: bool = False, confirmed: bool = False
+    app: App, recreate: bool = False, confirmed: bool = False
 ) -> None:
     """Handle upgrade-db command."""
     with app.app_context():
@@ -115,7 +115,7 @@ def handle_upgrade_db(
         post_migration_hook(app)
 
 
-def handle_load_test_data(app: Flask, confirmed: bool = False) -> None:
+def handle_load_test_data(app: App, confirmed: bool = False) -> None:
     """Handle load-test-data command."""
     with app.app_context():
         # Check database connectivity

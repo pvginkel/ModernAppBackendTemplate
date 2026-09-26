@@ -57,6 +57,11 @@ poetry run pytest ../tests/ -v      # Mother project tests (infrastructure)
 poetry run pytest tests/ -v          # Domain tests (Items CRUD)
 ```
 
+The mother suite needs two things from outside this repo:
+
+- **S3 on `localhost:9000`** — `.env.test` points there with `minioadmin` credentials. The KubeCoder environment provides a MinIO sidecar (see the parent repo's `.kubecoder/config.yaml`).
+- **The SSE Gateway** — the `ssegateway` npm package, resolved from the frontend template's `test-app/node_modules` (`../frontend/test-app`). Run the frontend `regen.sh` once first, or set `SSE_GATEWAY_NODE_DIR` to any directory whose `node_modules` holds it.
+
 ### 5. SQLite for Testing
 Tests use in-memory SQLite with the template cloning pattern (`sqlite3.Connection.backup()`).
 
@@ -76,6 +81,7 @@ Infrastructure code. See `docs/copier_approach.md` in the parent repo for the fu
 - `app/exceptions.py` — base + app-specific exceptions
 - `app/consts.py` — project constants
 - `app/app_config.py` — app-specific settings
+- `README.md`, `.dockerignore`, `Dockerfile` — generated once
 - `app/models/__init__.py` — model imports for Alembic
 - `pyproject.toml` — dependencies
 - `tests/conftest.py` — test fixtures

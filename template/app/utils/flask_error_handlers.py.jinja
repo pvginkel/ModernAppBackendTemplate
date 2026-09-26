@@ -4,7 +4,7 @@ Provides modular registration of Flask-native error handlers that convert
 exceptions into rich JSON error responses. Three registration functions
 allow layered composition:
 
-- register_core_error_handlers: Pydantic ValidationError, IntegrityError, HTTP 404/405/500
+- register_core_error_handlers: Pydantic ValidationError, {% if use_database %}IntegrityError, {% endif %}HTTP 404/405/500
 - register_business_error_handlers: All BusinessLogicException subclasses
 - register_app_error_handlers: Convenience wrapper that calls both of the above
 """
@@ -78,7 +78,7 @@ def build_error_response(
 def register_core_error_handlers(app: Flask) -> None:
     """Register error handlers for framework-level exceptions.
 
-    Handles Pydantic ValidationError, SQLAlchemy IntegrityError, Werkzeug
+    Handles Pydantic ValidationError, {% if use_database %}SQLAlchemy IntegrityError, {% endif %}Werkzeug
     BadRequest, and HTTP status codes 404, 405, and 500.
     """
 

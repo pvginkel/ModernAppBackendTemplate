@@ -31,10 +31,10 @@ def create_container() -> ServiceContainer:
 
 def register_blueprints(api_bp: Blueprint, app: Flask) -> None:
     """Register all app-specific blueprints on api_bp (under /api prefix)."""
-    if not api_bp._got_registered_once:  # type: ignore[attr-defined]
+    if not api_bp._got_registered_once:
         from app.api.items import items_bp
 
-        api_bp.register_blueprint(items_bp)  # type: ignore[attr-defined]
+        api_bp.register_blueprint(items_bp)
 
 
 def register_error_handlers(app: Flask) -> None:

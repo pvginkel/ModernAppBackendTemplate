@@ -23,16 +23,6 @@ author_email:
   type: str
   help: "Author email for pyproject.toml"
 
-repo_url:
-  type: str
-  default: ""
-  help: "Git repository URL (used in Jenkinsfile)"
-
-image_name:
-  type: str
-  default: "registry:5000/{{ project_name }}"
-  help: "Docker image name (used in Jenkinsfile and build scripts)"
-
 database_name:
   type: str
   default: "{{ project_name }}"
@@ -61,7 +51,7 @@ frontend_port:
 sse_gateway_port:
   type: int
   default: 3002
-  help: "SSE Gateway port (used in dev-sse-gateway.sh)"
+  help: "SSE Gateway port (SSE_GATEWAY_URL default)"
 
 use_database:
   type: bool
@@ -83,11 +73,6 @@ use_sse:
   default: false
   help: "Include Server-Sent Events via SSE Gateway"
 
-validation_jenkins_job:
-  type: str
-  default: ""
-  help: "Jenkins validation job to trigger after build (empty = old build+deploy flow)"
-
 # ── Files generated once, never overwritten ───────────────────────────
 
 _skip_if_exists:
@@ -98,10 +83,11 @@ _skip_if_exists:
   - "app/app_config.py"
   - "app/models/__init__.py"
   - "pyproject.toml"
+  - "README.md"
   - "tests/conftest.py"
   - ".env.example"
   - "Dockerfile"
-  - "Jenkinsfile"
+  - ".dockerignore"
   - "vulture_whitelist.py"
 
 # ── Feature-flagged file exclusion ────────────────────────────────────
@@ -109,6 +95,8 @@ _skip_if_exists:
 _exclude:
   # Database
   - "{% if not use_database %}app/extensions.py{% endif %}"
+  - "{% if not use_database %}app/models{% endif %}"
+  - "{% if not use_database %}app/utils/after_commit.py{% endif %}"
   - "{% if not use_database %}app/database.py{% endif %}"
   - "{% if not use_database %}app/services/diagnostics_service.py{% endif %}"
   - "{% if not use_database %}app/utils/pool_diagnostics.py{% endif %}"
@@ -146,4 +134,3 @@ _exclude:
   - "{% if not use_sse %}app/services/frontend_version_service.py{% endif %}"
   - "{% if not use_sse %}app/utils/sse_utils.py{% endif %}"
   - "{% if not use_sse %}app/utils/log_capture.py{% endif %}"
-  - "{% if not use_sse %}scripts/dev-sse-gateway.sh{% endif %}"

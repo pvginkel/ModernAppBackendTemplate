@@ -2,8 +2,7 @@
 
 from typing import Any
 
-from flask import current_app
-
+from app.app import current_container
 from app.utils.flask_error_handlers import build_error_response
 
 
@@ -14,7 +13,7 @@ def reject_if_not_testing() -> Any:
     Returns None (allowing the request to proceed) when in testing mode,
     or an error response tuple when not.
     """
-    container = current_app.container
+    container = current_container()
     settings = container.config()
 
     if not settings.is_testing:

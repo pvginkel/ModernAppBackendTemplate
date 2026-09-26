@@ -1,18 +1,22 @@
 """Custom Flask application class with typed container attribute."""
 
-from typing import TYPE_CHECKING, cast
+from typing import {% if use_database %}TYPE_CHECKING, {% endif %}cast
 
 from flask import Flask, current_app
 
 from app.services.container import ServiceContainer
+{% if use_database %}
 
 if TYPE_CHECKING:
     from app.services.diagnostics_service import DiagnosticsService
+{% endif %}
 
 
 class App(Flask):
     container: ServiceContainer
+{% if use_database %}
     diagnostics_service: "DiagnosticsService"
+{% endif %}
 
 
 def current_container() -> ServiceContainer:

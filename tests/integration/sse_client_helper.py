@@ -35,19 +35,9 @@ class SSEClient:
 
         for line in response.iter_lines(decode_unicode=True):
             if line == "":
-                if event_name is not None and data_lines:
-                    data_str = "\n".join(data_lines)
-
-                    try:
-                        data = json.loads(data_str)
-                    except json.JSONDecodeError as e:
-                        if self.strict:
-                            raise ValueError(f"Failed to parse SSE event data as JSON: {data_str}") from e
-                        else:
-                            logger.warning(f"Failed to parse SSE event data as JSON: {data_str}, error: {e}")
-                            data = data_str
-
-                    yield {"event": event_name, "data": data}
+                event = self._build_event(event_name, data_lines)
+                if event is not None:
+                    yield event
 
                 event_name = None
                 data_lines = []
@@ -71,15 +61,31 @@ class SSEClient:
                     logger.warning(f"Ignoring malformed SSE line: {line}")
 
         # Handle stream ending without final blank line
-        if event_name is not None and data_lines:
-            data_str = "\n".join(data_lines)
-            try:
-                data = json.loads(data_str)
-            except json.JSONDecodeError as e:
-                if self.strict:
-                    raise ValueError(f"Failed to parse final SSE event data as JSON: {data_str}") from e
-                else:
-                    logger.warning(f"Failed to parse final SSE event data as JSON: {data_str}, error: {e}")
-                    data = data_str
+        event = self._build_event(event_name, data_lines)
+        if event is not None:
+            yield event
 
-            yield {"event": event_name, "data": data}
+    def _build_event(self, event_name: str | None, data_lines: list[str]) -> dict[str, Any] | None:
+        """Turn one SSE frame into ``{"event", "data"}``, or None to skip it.
+
+        The SSE Gateway sends application events unnamed, wrapped in a
+        ``{"type": <name>, "payload": <data>}`` envelope; those are unwrapped so
+        tests see the application's event name. The gateway's own ``ready``
+        control signal (a named event with an empty data line) is skipped.
+        """
+        if event_name == "ready" or not data_lines:
+            return None
+
+        data_str = "\n".join(data_lines)
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError as e:
+            if self.strict:
+                raise ValueError(f"Failed to parse SSE event data as JSON: {data_str}") from e
+            logger.warning(f"Failed to parse SSE event data as JSON: {data_str}, error: {e}")
+            return {"event": event_name, "data": data_str}
+
+        if event_name is None and isinstance(data, dict) and "type" in data and "payload" in data:
+            return {"event": data["type"], "data": data["payload"]}
+
+        return {"event": event_name, "data": data}

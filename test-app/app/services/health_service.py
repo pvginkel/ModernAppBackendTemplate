@@ -6,6 +6,7 @@ their own checks. The health API blueprint delegates to this service.
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
 from app.config import Settings
 from app.utils.lifecycle_coordinator import LifecycleCoordinatorProtocol
@@ -28,10 +29,10 @@ class HealthService:
     ) -> None:
         self.lifecycle_coordinator = lifecycle_coordinator
         self.settings = settings
-        self._healthz_checks: list[tuple[str, Callable[[], dict]]] = []
-        self._readyz_checks: list[tuple[str, Callable[[], dict]]] = []
+        self._healthz_checks: list[tuple[str, Callable[[], dict[str, Any]]]] = []
+        self._readyz_checks: list[tuple[str, Callable[[], dict[str, Any]]]] = []
 
-    def register_healthz(self, name: str, check: Callable[[], dict]) -> None:
+    def register_healthz(self, name: str, check: Callable[[], dict[str, Any]]) -> None:
         """Register a liveness check callback.
 
         Args:
@@ -40,7 +41,7 @@ class HealthService:
         """
         self._healthz_checks.append((name, check))
 
-    def register_readyz(self, name: str, check: Callable[[], dict]) -> None:
+    def register_readyz(self, name: str, check: Callable[[], dict[str, Any]]) -> None:
         """Register a readiness check callback.
 
         Args:
@@ -50,19 +51,19 @@ class HealthService:
         """
         self._readyz_checks.append((name, check))
 
-    def check_healthz(self) -> tuple[dict, int]:
+    def check_healthz(self) -> tuple[dict[str, Any], int]:
         """Run all liveness checks.
 
         Returns:
             Tuple of (response dict, HTTP status code). Always returns 200
             since liveness means the process is alive.
         """
-        result: dict = {"status": "alive", "ready": True}
+        result: dict[str, Any] = {"status": "alive", "ready": True}
         for name, check in self._healthz_checks:
             result[name] = check()
         return result, 200
 
-    def check_readyz(self) -> tuple[dict, int]:
+    def check_readyz(self) -> tuple[dict[str, Any], int]:
         """Run all readiness checks.
 
         Returns 503 if shutting down or any check fails.
@@ -73,7 +74,7 @@ class HealthService:
         if self.lifecycle_coordinator.is_shutting_down():
             return {"status": "shutting down", "ready": False}, 503
 
-        result: dict = {"status": "ready", "ready": True}
+        result: dict[str, Any] = {"status": "ready", "ready": True}
         all_ok = True
         for name, check in self._readyz_checks:
             check_result = check()
@@ -88,7 +89,7 @@ class HealthService:
 
         return result, 200
 
-    def drain(self, auth_header: str) -> tuple[dict, int]:
+    def drain(self, auth_header: str) -> tuple[dict[str, Any], int]:
         """Handle drain request with bearer token authentication.
 
         Args:

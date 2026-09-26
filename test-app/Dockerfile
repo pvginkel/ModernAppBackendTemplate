@@ -26,7 +26,7 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock /app/
 
 # Install project deps into .venv
-RUN poetry install --no-root --no-interaction --no-ansi
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 # copy your source (no re-resolution needed)
 COPY *.py /app/

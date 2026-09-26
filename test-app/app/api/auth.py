@@ -68,13 +68,11 @@ def get_current_user(
         # Check for forced errors first (single-shot)
         forced_error = testing_service.consume_forced_auth_error()
         if forced_error:
-            from flask import jsonify
-
             logger.info("Returning forced auth error: status=%d", forced_error)
-            return jsonify({
+            return {
                 "error": f"Simulated error for testing (status {forced_error})",
                 "message": "Simulated error for testing",
-            }), forced_error
+            }, forced_error
 
         # Check for test sessions
         token = request.cookies.get(config.oidc_cookie_name)

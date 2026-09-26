@@ -6,6 +6,7 @@ is health-checked before tests begin.
 """
 
 import logging
+import os
 import signal
 import subprocess
 import tempfile
@@ -16,8 +17,14 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Default path to the SSE Gateway run script. Override via constructor parameter.
-DEFAULT_GATEWAY_SCRIPT = "/work/SSEGateway/scripts/run-gateway.sh"
+# The gateway is the `ssegateway` npm package, a devDependency of the frontend
+# template, so it is resolved from the frontend template's test-app (run the
+# frontend regen.sh first). Override with SSE_GATEWAY_NODE_DIR: any directory
+# whose node_modules holds ssegateway.
+DEFAULT_GATEWAY_NODE_DIR = os.environ.get(
+    "SSE_GATEWAY_NODE_DIR",
+    str(Path(__file__).resolve().parents[3] / "frontend" / "test-app"),
+)
 
 
 class SSEGatewayProcess:
@@ -27,7 +34,7 @@ class SSEGatewayProcess:
         self,
         callback_url: str,
         port: int,
-        gateway_script: str = DEFAULT_GATEWAY_SCRIPT,
+        gateway_node_dir: str = DEFAULT_GATEWAY_NODE_DIR,
         health_check_url: str | None = None,
         startup_timeout: float = 10.0,
         health_check_interval: float = 0.5,
@@ -35,7 +42,7 @@ class SSEGatewayProcess:
     ):
         self.callback_url = callback_url
         self.port = port
-        self.gateway_script = gateway_script
+        self.gateway_node_dir = gateway_node_dir
         self.health_check_url = health_check_url or f"http://localhost:{port}/readyz"
         self.startup_timeout = startup_timeout
         self.health_check_interval = health_check_interval
@@ -54,11 +61,8 @@ class SSEGatewayProcess:
             f"Starting SSE Gateway on port {self.port} with callback URL: {self.callback_url}"
         )
 
-        cmd = [
-            self.gateway_script,
-            "--callback-url", self.callback_url,
-            "--port", str(self.port),
-        ]
+        cmd = ["node", "-e", "require(require.resolve('ssegateway'))"]
+        env = {**os.environ, "PORT": str(self.port), "CALLBACK_URL": self.callback_url}
 
         self.stdout_file = tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.log')
         self.stderr_file = tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.log')
@@ -66,6 +70,8 @@ class SSEGatewayProcess:
         try:
             self.process = subprocess.Popen(
                 cmd,
+                cwd=self.gateway_node_dir,
+                env=env,
                 stdout=self.stdout_file,
                 stderr=self.stderr_file,
                 text=True,

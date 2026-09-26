@@ -40,7 +40,6 @@ ruff = "^0.11.0"
 mypy = "^1.8.0"
 pytest = "^7.4.0"
 pytest-cov = "^4.1.0"
-types-flask = "^1.1.0"
 types-flask-cors = "^4.0.0"
 types-requests = "^2.31.0"
 types-waitress = "^3.0.1.20250801"
@@ -82,7 +81,6 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.13"
-plugins = ["sqlalchemy.ext.mypy.plugin"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
