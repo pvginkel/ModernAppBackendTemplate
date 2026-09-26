@@ -19,6 +19,3 @@ exc_tb  # unused variable
 # SQLAlchemy pool event listener signatures (checkout/checkin)
 conn_proxy  # unused variable
 conn_record  # unused variable
-
-# Function parameters kept for API compatibility
-encoding  # unused variable

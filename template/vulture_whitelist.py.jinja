@@ -2,8 +2,8 @@
 # that vulture incorrectly reports as unused.
 #
 # Run vulture with: poetry run vulture app/ vulture_whitelist.py --min-confidence 80
-
 {% if use_database %}
+
 # SQLAlchemy event listener signatures (before/after_cursor_execute)
 context  # unused variable
 cursor  # unused variable
@@ -17,12 +17,9 @@ frame  # unused variable
 exc_type  # unused variable
 exc_val  # unused variable
 exc_tb  # unused variable
-
 {% if use_database %}
+
 # SQLAlchemy pool event listener signatures (checkout/checkin)
 conn_proxy  # unused variable
 conn_record  # unused variable
 {% endif %}
-
-# Function parameters kept for API compatibility
-encoding  # unused variable
