@@ -85,6 +85,7 @@ Infrastructure code. See `docs/copier_approach.md` in the parent repo for the fu
 - `app/models/__init__.py` — model imports for Alembic
 - `pyproject.toml` — dependencies
 - `tests/conftest.py` — test fixtures
+- `tests/test_smoke.py` — liveness smoke test, so a fresh app has a test to collect
 - `.env.example` — environment documentation
 - `Dockerfile`
 
