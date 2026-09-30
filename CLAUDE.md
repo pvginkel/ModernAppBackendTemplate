@@ -59,7 +59,7 @@ poetry run pytest tests/ -v          # Domain tests (Items CRUD)
 
 The mother suite needs two things from outside this repo:
 
-- **S3 on `localhost:9000`** — `.env.test` points there with `minioadmin` credentials. The KubeCoder environment provides a MinIO sidecar (see the parent repo's `.kubecoder/config.yaml`).
+- **S3 on `localhost:9000`** — `.env.test` points there with `s3storage` credentials. The KubeCoder environment provides it as the `s3storage` service, a RustFS sidecar (see the parent repo's `.kubecoder/config.yaml`).
 - **The SSE Gateway** — the `ssegateway` npm package, resolved from the frontend template's `test-app/node_modules` (`../frontend/test-app`). Run the frontend `regen.sh` once first, or set `SSE_GATEWAY_NODE_DIR` to any directory whose `node_modules` holds it.
 
 ### 5. SQLite for Testing
