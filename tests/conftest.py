@@ -45,6 +45,10 @@ def pytest_configure(config: pytest.Config) -> None:
     endpoint = os.environ.get("S3_ENDPOINT_URL", "http://localhost:9000")
     try:
         urllib.request.urlopen(endpoint, timeout=3)
+    except urllib.error.HTTPError:
+        # Any HTTP response means the storage server is up and answering:
+        # RustFS and MinIO reply to an anonymous GET / with 403.
+        pass
     except (urllib.error.URLError, OSError, TimeoutError):
         pytest.exit(
             f"S3/Ceph is not reachable at {endpoint}. "
