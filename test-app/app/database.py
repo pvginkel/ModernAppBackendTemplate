@@ -2,16 +2,27 @@
 
 import logging
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import MetaData, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 from alembic import command
 from app.config import Settings
 from app.extensions import db
+from app.utils.after_commit import (
+    clear_after_commit_callbacks,
+    run_after_commit_callbacks,
+)
+
+if TYPE_CHECKING:
+    from app.services.container import ServiceContainer
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +42,51 @@ def init_db() -> None:
 
     # Create all tables (only if they don't exist)
     db.create_all()
+
+
+@contextmanager
+def scoped_session(container: "ServiceContainer") -> Generator[Session]:
+    """Give work off the request path (a task, a thread, a CLI command) a session.
+
+    Commits on a clean exit and rolls back on an exception, as the request
+    teardown in ``create_app()`` does, and likewise runs the
+    ``after_commit()`` callbacks only once the commit succeeded. The session is
+    always closed and the container's provider reset: ``db_session.reset()``
+    alone leaves the session open, its connection idle in transaction until
+    the garbage collector gets to it.
+
+    Not for use inside a request, whose session is the same provider.
+    """
+    session: Session = container.db_session()
+    try:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+            container.db_session.reset()
+        run_after_commit_callbacks()
+    finally:
+        clear_after_commit_callbacks()
+
+
+@contextmanager
+def scoped_savepoint(session: Session) -> Generator[None]:
+    """Wrap a block in a SAVEPOINT: released on a clean exit, rolled back on an exception.
+
+    The outer transaction stays intact either way, so a loop can give each
+    item its own savepoint and carry on past the items that fail.
+    """
+    nested = session.begin_nested()
+    try:
+        yield
+        nested.commit()
+    except Exception:
+        nested.rollback()
+        raise
 
 
 def check_db_connection() -> bool:
