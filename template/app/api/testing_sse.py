@@ -35,7 +35,6 @@ from app.services.frontend_version_service import FrontendVersionService
 from app.services.sse_connection_manager import SSEConnectionManager, Target
 from app.services.task_service import TaskService
 from app.services.testing_service import TestingService
-from app.utils.auth import get_auth_context
 from app.utils.spectree_config import api
 
 logger = logging.getLogger(__name__)
@@ -117,9 +116,11 @@ def start_test_task(
     else:
         return jsonify({"error": f"Unknown task_type: {payload.task_type}"}), 400
 
-    auth = get_auth_context()
-    caller_subject = auth.subject if auth else None
-    result = task_service.start_task(task, caller_subject=caller_subject, **payload.params)
+    # This blueprint sits outside api_bp, so no auth hook runs here and the
+    # task gets no subject. Its events go to the local admin's connections with
+    # OIDC off (how the Playwright backend and the integration tests run), and
+    # to nobody with OIDC on.
+    result = task_service.start_task(task, caller_subject=None, **payload.params)
     response = TaskStartResponseSchema(task_id=result.task_id, status="started")
     return jsonify(response.model_dump()), 200
 
