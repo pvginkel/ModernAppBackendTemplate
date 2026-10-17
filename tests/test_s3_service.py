@@ -10,6 +10,7 @@ from flask import Flask
 
 from app.config import Settings
 from app.exceptions import InvalidOperationException
+from app.services.health_service import CheckResult, CheckStatus
 from app.services.s3_service import S3Service
 
 
@@ -319,6 +320,41 @@ class TestStartup:
         client.head_bucket.side_effect = _client_error("403", "Forbidden")
 
         service.startup()
+
+
+class TestReadinessCheck:
+    def test_startup_registers_a_critical_check(self, client: MagicMock, test_settings: Settings):
+        health_service = MagicMock()
+        svc = S3Service(test_settings, health_service=health_service)
+        svc._s3_client = client
+
+        svc.startup()
+
+        health_service.register_check.assert_called_once_with(
+            "s3", svc.check_readiness, critical=True
+        )
+
+    def test_startup_registers_even_when_the_bucket_fails(
+        self, client: MagicMock, test_settings: Settings
+    ):
+        client.head_bucket.side_effect = _client_error("403", "Forbidden")
+        health_service = MagicMock()
+        svc = S3Service(test_settings, health_service=health_service)
+        svc._s3_client = client
+
+        svc.startup()
+
+        health_service.register_check.assert_called_once()
+
+    def test_reachable_bucket_is_ok(self, service: S3Service, client: MagicMock):
+        assert service.check_readiness() == CheckResult(CheckStatus.OK)
+        client.head_bucket.assert_called_once_with(Bucket="test-bucket")
+
+    def test_unreachable_bucket_raises(self, service: S3Service, client: MagicMock):
+        client.head_bucket.side_effect = _client_error("403", "Forbidden")
+
+        with pytest.raises(ClientError):
+            service.check_readiness()
 
 
 class TestContentAddressing:

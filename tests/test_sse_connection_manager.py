@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.services.health_service import CheckResult, CheckStatus
 from app.services.sse_connection_manager import SSEConnectionManager
 
 
@@ -185,3 +186,35 @@ class TestSubjectFilteredBroadcast:
 
         assert result is False
         assert mock_post.call_count == 0
+
+
+class TestReadinessCheck:
+    """The manager registers the gateway's readiness check itself."""
+
+    def test_registers_a_non_critical_check(self):
+        health_service = Mock()
+
+        manager = SSEConnectionManager(
+            gateway_url="http://localhost:3000", health_service=health_service
+        )
+
+        health_service.register_check.assert_called_once_with(
+            "sse_gateway", manager.check_readiness, critical=False
+        )
+
+    def test_gateway_ready(self, sse_connection_manager):
+        with patch("requests.get", return_value=Mock(status_code=200)) as get:
+            assert sse_connection_manager.check_readiness() == CheckResult(CheckStatus.OK)
+
+        get.assert_called_once_with("http://localhost:3000/readyz", timeout=5.0)
+
+    def test_gateway_not_ready(self, sse_connection_manager):
+        with patch("requests.get", return_value=Mock(status_code=503)):
+            result = sse_connection_manager.check_readiness()
+
+        assert result == CheckResult(CheckStatus.ERROR, "gateway readyz answered 503")
+
+    def test_gateway_unreachable_raises(self, sse_connection_manager):
+        with patch("requests.get", side_effect=ConnectionError("Connection refused")):
+            with pytest.raises(ConnectionError):
+                sse_connection_manager.check_readiness()

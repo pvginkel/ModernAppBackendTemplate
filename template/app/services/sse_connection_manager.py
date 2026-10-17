@@ -27,6 +27,7 @@ from app.schemas.sse_gateway_schema import (
     SSEGatewayEventData,
     SSEGatewaySendRequest,
 )
+from app.services.health_service import CheckResult, CheckStatus, HealthService
 
 # SSE Gateway metrics
 SSE_GATEWAY_CONNECTIONS_TOTAL = Counter(
@@ -71,13 +72,16 @@ class SSEConnectionManager:
     def __init__(
         self,
         gateway_url: str,
-        http_timeout: float = 5.0
+        http_timeout: float = 5.0,
+        health_service: HealthService | None = None,
     ):
         """Initialize SSEConnectionManager.
 
         Args:
             gateway_url: Base URL for SSE Gateway (e.g., "http://localhost:3000")
             http_timeout: Timeout for HTTP requests to SSE Gateway in seconds
+            health_service: Where to register the non-critical ``sse_gateway``
+                readiness check; passed only when the app uses SSE.
         """
         self.gateway_url = gateway_url.rstrip("/")
         self.http_timeout = http_timeout
@@ -97,6 +101,18 @@ class SSEConnectionManager:
 
         # Thread safety
         self._lock = threading.RLock()
+
+        # Not critical: the app serves without live updates, and the gateway
+        # has its own readiness probe.
+        if health_service is not None:
+            health_service.register_check("sse_gateway", self.check_readiness, critical=False)
+
+    def check_readiness(self) -> CheckResult:
+        """Readiness check: the SSE Gateway answers its own readyz with 200."""
+        response = requests.get(f"{self.gateway_url}/readyz", timeout=self.http_timeout)
+        if response.status_code != 200:
+            return CheckResult(CheckStatus.ERROR, f"gateway readyz answered {response.status_code}")
+        return CheckResult(CheckStatus.OK)
 
     def register_on_connect(self, callback: Callable[[str], None]) -> None:
         """Register a callback to be notified when connections are established.

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 from app.config import Settings
 from app.exceptions import InvalidOperationException
+from app.services.health_service import CheckResult, CheckStatus, HealthService
 
 logger = logging.getLogger(__name__)
 
@@ -23,24 +24,36 @@ logger = logging.getLogger(__name__)
 class S3Service:
     """Service for S3-compatible storage operations using Ceph backend."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, health_service: HealthService | None = None):
         """Initialize S3 service.
 
         Args:
             settings: Application settings
+            health_service: Where startup() registers the critical ``s3``
+                readiness check. Without it, readyz does not check S3.
         """
         self._s3_client: S3Client | None = None
         self.settings = settings
+        self._health_service = health_service
 
     def startup(self) -> None:
-        """Ensure the S3 bucket exists during app startup.
+        """Ensure the S3 bucket exists and register the readiness check.
 
-        Logs a warning on failure rather than preventing app startup.
+        Logs a warning when the bucket can't be ensured rather than preventing
+        app startup; the readiness check reports the bucket until it is there.
         """
         try:
             self.ensure_bucket_exists()
         except Exception as e:
             logger.warning("Failed to ensure S3 bucket exists: %s", e)
+
+        if self._health_service is not None:
+            self._health_service.register_check("s3", self.check_readiness, critical=True)
+
+    def check_readiness(self) -> CheckResult:
+        """Readiness check: the bucket is reachable. Errors raise and are reported."""
+        self.s3_client.head_bucket(Bucket=self.settings.s3_bucket_name)
+        return CheckResult(CheckStatus.OK)
 
     @property
     def s3_client(self) -> S3Client:

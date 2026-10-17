@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from alembic import command
 from app.config import Settings
 from app.extensions import db
+from app.services.health_service import CheckResult, CheckStatus
 from app.utils.after_commit import (
     clear_after_commit_callbacks,
     run_after_commit_callbacks,
@@ -135,8 +136,7 @@ def get_pending_migrations() -> list[str]:
     """Get list of pending migration revisions.
 
     Errors propagate: a broken Alembic setup or an unreachable database must not
-    read as "up to date". Callers that need a verdict, such as the readiness
-    check, catch them.
+    read as "up to date". The readiness check reports them as its failure.
     """
     config = _get_alembic_config()
 
@@ -174,6 +174,20 @@ def get_pending_migrations() -> list[str]:
 
         revisions.reverse()  # Want chronological order
         return revisions
+
+
+def check_readiness() -> CheckResult:
+    """Readiness check: the database answers and no migration is pending.
+
+    A failing migration lookup raises, and the health service reports the
+    exception as the check's error.
+    """
+    if not check_db_connection():
+        return CheckResult(CheckStatus.ERROR, "connection failed")
+    pending = get_pending_migrations()
+    if pending:
+        return CheckResult(CheckStatus.ERROR, f"{len(pending)} migrations pending")
+    return CheckResult(CheckStatus.OK)
 
 
 def drop_all_tables() -> None:
