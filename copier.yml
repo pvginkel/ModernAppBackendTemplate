@@ -106,6 +106,8 @@ _exclude:
   - "{% if not use_database %}alembic{% endif %}"
   - "{% if not use_database %}scripts/initialize-sqlite-database.sh{% endif %}"
   - "{% if not use_database %}scripts/init-dev-database.py{% endif %}"
+  - "{% if not use_database %}tests/test_database_schema.py{% endif %}"
+  - "{% if not use_database and not use_s3 %}scripts/wait-for-services.py{% endif %}"
 
   # OIDC
   - "{% if not use_oidc %}app/api/auth.py{% endif %}"
