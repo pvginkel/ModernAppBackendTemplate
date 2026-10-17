@@ -5,16 +5,23 @@ orchestrate the correct sequence of calls: database checks, migrations, and
 app-specific hooks. The hooks themselves are tested in tests/test_startup.py.
 """
 
+from types import SimpleNamespace
+
 import pytest
 from flask import Flask
 
 import app.cli as cli
+from app.config import Settings
 
 
-def _make_app(db_uri: str = "postgresql+psycopg://localhost:5432/cli-test") -> Flask:
-    """Create a minimal Flask app for CLI tests."""
+def _make_app(
+    db_uri: str = "postgresql+psycopg://localhost:5432/cli-test", stage: str = "local-dev"
+) -> Flask:
+    """Create a minimal Flask app for CLI tests, with the settings the handlers read."""
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
+    settings = Settings(stage=stage)
+    app.container = SimpleNamespace(config=lambda: settings)  # type: ignore[attr-defined]
     return app
 
 
@@ -191,3 +198,71 @@ class TestCliGroup:
     def test_cli_group_has_load_test_data_command(self) -> None:
         """The CLI group should have a load-test-data command."""
         assert "load-test-data" in cli.cli.commands
+
+
+class TestProductionGuard:
+    """On STAGE=prd the commands that destroy data refuse; a plain upgrade runs."""
+
+    def test_load_test_data_refuses_on_prd(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        app = _make_app(stage="prd")
+        calls: list[str] = []
+
+        monkeypatch.setattr(cli, "check_db_connection", lambda: True)
+        monkeypatch.setattr(cli, "upgrade_database", lambda recreate=False: calls.append("upgrade"))
+        monkeypatch.setattr(cli, "load_test_data_hook", lambda a: calls.append("hook"))
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.handle_load_test_data(app=app, confirmed=True)
+
+        assert exc_info.value.code == 1
+        assert calls == []
+        assert "STAGE=prd" in capsys.readouterr().err
+
+    def test_recreate_refuses_on_prd(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        app = _make_app(stage="prd")
+        calls: list[str] = []
+
+        monkeypatch.setattr(cli, "check_db_connection", lambda: True)
+        monkeypatch.setattr(cli, "upgrade_database", lambda recreate=False: calls.append("upgrade"))
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.handle_upgrade_db(app=app, recreate=True, confirmed=True)
+
+        assert exc_info.value.code == 1
+        assert calls == []
+        assert "STAGE=prd" in capsys.readouterr().err
+
+    def test_plain_upgrade_runs_on_prd(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app = _make_app(stage="prd")
+        calls: list[str] = []
+
+        monkeypatch.setattr(cli, "check_db_connection", lambda: True)
+        monkeypatch.setattr(cli, "get_current_revision", lambda: "abc1234")
+        monkeypatch.setattr(cli, "get_pending_migrations", lambda: ["def5678"])
+        monkeypatch.setattr(
+            cli, "upgrade_database", lambda recreate=False: calls.append(f"upgrade:{recreate}") or []
+        )
+        monkeypatch.setattr(cli, "post_migration_hook", lambda a: calls.append("hook"))
+
+        cli.handle_upgrade_db(app=app)
+
+        assert calls == ["upgrade:False", "hook"]
+
+    @pytest.mark.parametrize("stage", ["local-dev", "local-tst", "tst", "dev", "uat"])
+    def test_other_stages_may_load_test_data(
+        self, stage: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app = _make_app(stage=stage)
+        calls: list[str] = []
+
+        monkeypatch.setattr(cli, "check_db_connection", lambda: True)
+        monkeypatch.setattr(cli, "upgrade_database", lambda recreate=False: [])
+        monkeypatch.setattr(cli, "load_test_data_hook", lambda a: calls.append("hook"))
+
+        cli.handle_load_test_data(app=app, confirmed=True)
+
+        assert calls == ["hook"]

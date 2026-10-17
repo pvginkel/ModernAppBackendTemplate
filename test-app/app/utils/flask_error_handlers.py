@@ -282,14 +282,25 @@ def register_business_error_handlers(app: Flask) -> None:
             status_code=400,
         )
 
-    # Generic Exception catch-all for unexpected errors
+    # Generic Exception catch-all for unexpected errors. The exception text
+    # can carry SQL, paths and library internals, so the response shows it
+    # only where the app may expose internals (Settings.expose_internals);
+    # the log and the correlation ID always have it.
     @app.errorhandler(Exception)
     def handle_generic_exception(error: Exception) -> tuple[Response, int]:
         _mark_request_failed()
         logger.error("Unhandled exception: %s", str(error), exc_info=True)
+        # Imported here: apps' startup.py imports this module, and app.app
+        # pulls in the container.
+        from app.app import current_container
+
+        if current_container().config().expose_internals:
+            message = str(error)
+        else:
+            message = "An unexpected error occurred"
         return build_error_response(
             "Internal server error",
-            {"message": str(error)},
+            {"message": message},
             status_code=500,
         )
 

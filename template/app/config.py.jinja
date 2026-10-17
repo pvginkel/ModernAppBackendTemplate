@@ -12,7 +12,7 @@ Usage:
     settings = Settings(secret_key="test", flask_env="testing", ...)
 
 Fields are organized by feature flag so each group can be independently enabled:
-- Core (always present): Flask, CORS, tasks, metrics, shutdown
+- Core (always present): Flask, stage, CORS, tasks, metrics, shutdown, logging
 - use_database: DATABASE_URL, pool settings, diagnostics, engine options
 - use_oidc: BASEURL, all OIDC_* settings
 - use_s3: all S3_* settings
@@ -25,13 +25,9 @@ settings dump at boot (``dump_for_logging()``) shows them as ``***``.
 """
 
 from pathlib import Path
-{% if use_database %}
-from typing import Annotated, Any
-{% else %}
-from typing import Annotated
-{% endif %}
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 {% if use_database %}
@@ -64,6 +60,69 @@ def dump_config_for_logging(model: BaseModel) -> dict[str, str]:
         name: "***" if is_sensitive(field_info) else repr(getattr(model, name))
         for name, field_info in type(model).model_fields.items()
     }
+
+
+StageName = Literal["local-dev", "dev", "uat", "prd", "local-tst", "tst"]
+STAGES: tuple[StageName, ...] = ("local-dev", "dev", "uat", "prd", "local-tst", "tst")
+
+
+class Stage:
+    """The deployment tier (STAGE), apart from FLASK_ENV.
+
+    ``dev``, ``uat`` and ``prd`` are deployed tiers, ``tst`` is CI, and
+    ``local-dev`` and ``local-tst`` are a developer's machine running the app
+    and its tests. Not a str subclass: ask ``is_env()`` and ``is_local()``.
+    Comparing with a str (``stage == "prd"``) works too.
+    """
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: str) -> None:
+        if value not in STAGES:
+            raise ValueError(f"Invalid stage {value!r}; must be one of {STAGES}")
+        self._value: StageName = value
+
+    @property
+    def value(self) -> StageName:
+        """The stage's name, such as ``prd``."""
+        return self._value
+
+    def is_local(self) -> bool:
+        """True for local-dev and local-tst."""
+        return self._value.startswith("local-")
+
+    def is_env(self, env: str) -> bool:
+        """True for ``env`` and its local variant: ``Stage("local-dev").is_env("dev")``."""
+        return self._value in (env, f"local-{env}")
+
+    def __str__(self) -> str:
+        return self._value
+
+    def __repr__(self) -> str:
+        return f"Stage({self._value!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Stage):
+            return self._value == other._value
+        if isinstance(other, str):
+            return self._value == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self._value)
+
+
+def default_stage(flask_env: str) -> StageName:
+    """STAGE when it is not set: local-tst under testing, local-dev under development, else prd.
+
+    A deployment that forgets STAGE therefore counts as production, and shows
+    no internal detail (Settings.expose_internals).
+    """
+    if flask_env == "testing":
+        return "local-tst"
+    if flask_env == "development":
+        return "local-dev"
+    return "prd"
 {% if use_database %}
 
 # Connection pool under FLASK_ENV=testing: the pytest apps and the Playwright
@@ -92,6 +151,14 @@ class Environment(BaseSettings):
 
     SECRET_KEY: str = Field(default=_DEFAULT_SECRET_KEY)
     FLASK_ENV: str = Field(default="development")
+    STAGE: StageName | None = Field(
+        default=None,
+        description="Deployment tier, apart from FLASK_ENV (unset: see default_stage())"
+    )
+    HOMELAB_INTERNAL: bool = Field(
+        default=False,
+        description="An internal app: show internal detail, such as exception text, even on prd"
+    )
     DEBUG: bool = Field(default=True)
     CORS_ORIGINS: list[str] = Field(
         default=["http://localhost:{{ frontend_port }}"], description="Allowed CORS origins"
@@ -290,12 +357,15 @@ class Settings(BaseModel):
     Fields are grouped by feature flag (see Environment docstring).
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
     # ── Core (always present) ──────────────────────────────────────────
 
     secret_key: Annotated[str, Sensitive] = _DEFAULT_SECRET_KEY
     flask_env: str = "development"
+    # Resolved: from flask_env when not given (default_stage)
+    stage: Stage = Field(default_factory=lambda data: Stage(default_stage(data["flask_env"])))
+    homelab_internal: bool = False
     debug: bool = True
     cors_origins: list[str] = Field(default=["http://localhost:{{ frontend_port }}"])
     task_max_workers: int = 4
@@ -360,6 +430,20 @@ class Settings(BaseModel):
     sse_gateway_url: str = "http://localhost:{{ sse_gateway_port }}"
     sse_callback_secret: Annotated[str, Sensitive] = ""
 {% endif %}
+
+    @field_validator("stage", mode="before")
+    @classmethod
+    def _stage_from_str(cls, value: Any) -> Any:
+        return Stage(value) if isinstance(value, str) else value
+
+    @property
+    def expose_internals(self) -> bool:
+        """Whether the app may show internal detail: STAGE is not prd, or HOMELAB_INTERNAL.
+
+        It decides whether a 500 response carries the exception text, and the
+        frontend reads it from GET /api/ui-setup.
+        """
+        return self.stage != "prd" or self.homelab_internal
 
     @property
     def is_testing(self) -> bool:
@@ -499,6 +583,8 @@ class Settings(BaseModel):
             # Core (always present)
             secret_key=env.SECRET_KEY,
             flask_env=env.FLASK_ENV,
+            stage=Stage(env.STAGE or default_stage(env.FLASK_ENV)),
+            homelab_internal=env.HOMELAB_INTERNAL,
             debug=env.DEBUG,
             cors_origins=env.CORS_ORIGINS,
             task_max_workers=env.TASK_MAX_WORKERS,

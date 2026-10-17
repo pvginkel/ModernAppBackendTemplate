@@ -71,6 +71,11 @@ class FrontendVersionService:
         if pending_version:
             version_payload = pending_version
             logger.debug(f"Sending pending version for request_id {request_id}")
+        elif self.settings.stage.is_local():
+            # A local stage has no deployed version.json to fetch; a queued
+            # (pending) version is the only one it sends.
+            logger.debug(f"No version sent in a local stage for request_id {request_id}")
+            return
         else:
             version_payload = self._fetch_frontend_version()
             logger.debug(f"Fetched current version for request_id {request_id}")

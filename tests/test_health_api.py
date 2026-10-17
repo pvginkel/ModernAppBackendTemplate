@@ -21,6 +21,7 @@ class TestHealthEndpoints:
             assert response.status_code == 200
             assert response.json["status"] == "ready"
             assert response.json["ready"] is True
+            assert response.json["stage"] == "local-tst"
 
     def test_readyz_when_shutting_down(
         self, app: Flask, client: FlaskClient, monkeypatch: pytest.MonkeyPatch
@@ -35,6 +36,7 @@ class TestHealthEndpoints:
         assert response.status_code == 503
         assert response.json["status"] == "shutting down"
         assert response.json["ready"] is False
+        assert response.json["stage"] == "local-tst"
 
     def test_healthz_always_returns_200(self, client: FlaskClient):
         """Test liveness probe always returns 200."""

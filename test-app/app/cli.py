@@ -54,6 +54,13 @@ def _database_for_display(app: App) -> str:
     return make_url(app.config["SQLALCHEMY_DATABASE_URI"]).render_as_string(hide_password=True)
 
 
+def _refuse_on_prd(app: App, action: str) -> None:
+    """Stop a command that destroys data when the app runs as STAGE=prd."""
+    if app.container.config().stage == "prd":
+        print(f"Refusing to {action} on STAGE=prd.", file=sys.stderr)
+        sys.exit(1)
+
+
 def handle_upgrade_db(
     app: App, recreate: bool = False, confirmed: bool = False
 ) -> None:
@@ -69,6 +76,9 @@ def handle_upgrade_db(
 
         # Let operator know which database is targeted
         print(f"Using database: {_database_for_display(app)}")
+
+        if recreate:
+            _refuse_on_prd(app, "drop and recreate the database")
 
         # Safety check for recreate
         if recreate and not confirmed:
@@ -134,6 +144,8 @@ def handle_load_test_data(app: App, confirmed: bool = False) -> None:
 
         # Let operator know which database is targeted
         print(f"Using database: {_database_for_display(app)}")
+
+        _refuse_on_prd(app, "drop the database and load test data")
 
         # Safety check for confirmation
         if not confirmed:

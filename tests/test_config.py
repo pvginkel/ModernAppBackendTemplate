@@ -14,6 +14,8 @@ from app.config import (
     Environment,
     Sensitive,
     Settings,
+    Stage,
+    default_stage,
     dump_config_for_logging,
     is_sensitive,
 )
@@ -432,3 +434,107 @@ class TestUploadLimit:
 
         assert settings.max_upload_size_mb == 200
         assert settings.to_flask_config().MAX_CONTENT_LENGTH == 200 * 1024 * 1024
+
+
+class TestStage:
+    @pytest.mark.parametrize("value", ["local-dev", "dev", "uat", "prd", "local-tst", "tst"])
+    def test_the_six_stages_are_valid(self, value: str):
+        assert str(Stage(value)) == value
+
+    @pytest.mark.parametrize("value", ["production", "PRD", "", "local-prd"])
+    def test_anything_else_is_rejected(self, value: str):
+        with pytest.raises(ValueError, match="Invalid stage"):
+            Stage(value)
+
+    def test_is_local(self):
+        assert Stage("local-dev").is_local()
+        assert Stage("local-tst").is_local()
+        assert not Stage("dev").is_local()
+        assert not Stage("prd").is_local()
+
+    def test_is_env_covers_the_local_variant(self):
+        assert Stage("local-dev").is_env("dev")
+        assert Stage("dev").is_env("dev")
+        assert not Stage("uat").is_env("dev")
+        assert Stage("prd").is_env("prd")
+
+    def test_compares_with_str_and_stage(self):
+        assert Stage("prd") == "prd"
+        assert Stage("prd") != "dev"
+        assert Stage("prd") == Stage("prd")
+        assert len({Stage("prd"), Stage("prd"), Stage("dev")}) == 2
+
+    @pytest.mark.parametrize(
+        ("flask_env", "expected"),
+        [
+            ("testing", "local-tst"),
+            ("development", "local-dev"),
+            ("production", "prd"),
+            # Anything else counts as production, such as an init container's.
+            ("db", "prd"),
+        ],
+    )
+    def test_default_follows_flask_env(self, flask_env: str, expected: str):
+        assert default_stage(flask_env) == expected
+        assert Settings(flask_env=flask_env).stage == expected
+
+    def test_load_takes_stage_from_the_environment(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.setenv("STAGE", "uat")
+
+        assert Settings.load().stage == "uat"
+
+    def test_load_defaults_from_flask_env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.delenv("STAGE", raising=False)
+
+        assert Settings.load(Environment(_env_file=None)).stage == "prd"  # type: ignore[call-arg]
+
+    def test_load_rejects_an_unknown_stage(self, monkeypatch: pytest.MonkeyPatch):
+        from pydantic import ValidationError
+
+        monkeypatch.setenv("STAGE", "production")
+
+        with pytest.raises(ValidationError):
+            Settings.load()
+
+    def test_settings_take_a_str(self):
+        settings = Settings(stage="dev")
+
+        assert isinstance(settings.stage, Stage)
+        assert settings.stage == "dev"
+
+
+class TestExposeInternals:
+    @pytest.mark.parametrize(
+        ("stage", "homelab_internal", "expected"),
+        [
+            ("prd", False, False),
+            ("prd", True, True),
+            ("uat", False, True),
+            ("dev", False, True),
+            ("tst", False, True),
+            ("local-dev", False, True),
+            ("local-tst", False, True),
+        ],
+    )
+    def test_true_off_prd_or_when_internal(self, stage: str, homelab_internal: bool, expected: bool):
+        settings = Settings(stage=stage, homelab_internal=homelab_internal)
+
+        assert settings.expose_internals is expected
+
+    def test_a_deployment_that_sets_nothing_exposes_nothing(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.delenv("STAGE", raising=False)
+        monkeypatch.delenv("HOMELAB_INTERNAL", raising=False)
+
+        settings = Settings.load(Environment(_env_file=None))  # type: ignore[call-arg]
+
+        assert settings.expose_internals is False
+
+    def test_homelab_internal_from_the_environment(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("FLASK_ENV", "production")
+        monkeypatch.setenv("STAGE", "prd")
+        monkeypatch.setenv("HOMELAB_INTERNAL", "true")
+
+        assert Settings.load().expose_internals is True

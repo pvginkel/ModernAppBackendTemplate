@@ -66,15 +66,17 @@ class HealthService:
     def check_readyz(self) -> tuple[dict[str, Any], int]:
         """Run all readiness checks.
 
-        Returns 503 if shutting down or any check fails.
+        Returns 503 if shutting down or any check fails. The response names
+        the deployment stage either way.
 
         Returns:
             Tuple of (response dict, HTTP status code).
         """
+        stage = str(self.settings.stage)
         if self.lifecycle_coordinator.is_shutting_down():
-            return {"status": "shutting down", "ready": False}, 503
+            return {"status": "shutting down", "ready": False, "stage": stage}, 503
 
-        result: dict[str, Any] = {"status": "ready", "ready": True}
+        result: dict[str, Any] = {"status": "ready", "ready": True, "stage": stage}
         all_ok = True
         for name, check in self._readyz_checks:
             check_result = check()

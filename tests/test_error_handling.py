@@ -4,6 +4,7 @@ from flask import Flask, request
 from flask.testing import FlaskClient
 from werkzeug.exceptions import UnsupportedMediaType
 
+from app.config import Settings
 from app.exceptions import (
     BusinessLogicException,
     InvalidOperationException,
@@ -109,3 +110,49 @@ class TestHttpErrors:
 
         assert response.status_code == 415
         assert response.json["error"] == "Unsupported Media Type"
+
+
+class TestUnhandledExceptionText:
+    """A 500 shows the exception text only where the app may expose internals.
+
+    Each test adds a route, which only an app that has served no request yet
+    accepts, so they run on an app of their own.
+    """
+
+    def _app_raising(self, app: Flask, **settings_update: object) -> Flask:
+        settings: Settings = app.container.config()
+        app.container.config.override(settings.model_copy(update=settings_update))
+
+        def explode() -> str:
+            raise RuntimeError("relation \"secret_table\" does not exist")
+
+        app.add_url_rule("/test-explode", "test_explode", explode)
+        return app
+
+    def test_text_shown_off_prd(self, committed_app: Flask):
+        app = self._app_raising(committed_app)
+
+        response = app.test_client().get("/test-explode")
+
+        assert response.status_code == 500
+        assert "secret_table" in response.json["details"]["message"]
+
+    def test_text_hidden_on_prd(self, committed_app: Flask):
+        app = self._app_raising(committed_app, stage=Settings(stage="prd").stage)
+
+        response = app.test_client().get("/test-explode")
+
+        assert response.status_code == 500
+        assert response.json["details"]["message"] == "An unexpected error occurred"
+        assert "secret_table" not in response.get_data(as_text=True)
+        assert response.json["correlationId"]
+
+    def test_text_shown_on_prd_when_internal(self, committed_app: Flask):
+        app = self._app_raising(
+            committed_app, stage=Settings(stage="prd").stage, homelab_internal=True
+        )
+
+        response = app.test_client().get("/test-explode")
+
+        assert response.status_code == 500
+        assert "secret_table" in response.json["details"]["message"]

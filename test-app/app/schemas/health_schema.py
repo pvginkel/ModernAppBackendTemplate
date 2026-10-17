@@ -14,3 +14,8 @@ class HealthResponse(BaseModel):
         description="Whether the service is ready to handle requests",
         examples=[True, False]
     )
+    stage: str | None = Field(
+        default=None,
+        description="Deployment stage (STAGE); readyz only",
+        examples=["prd", "local-dev"]
+    )
