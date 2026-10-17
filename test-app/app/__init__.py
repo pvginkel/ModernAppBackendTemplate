@@ -142,7 +142,11 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
         connected = _database_module.check_db_connection()
         if not connected:
             return {"connected": False, "ok": False}
-        pending = _database_module.get_pending_migrations()
+        try:
+            pending = _database_module.get_pending_migrations()
+        except Exception as e:
+            logging.getLogger(__name__).exception("Checking pending migrations failed")
+            return {"connected": True, "error": str(e), "ok": False}
         return {
             "connected": True,
             "migrations_pending": len(pending),

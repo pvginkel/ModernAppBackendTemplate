@@ -100,6 +100,17 @@ class TestHealthEndpoints:
             assert response.json["ready"] is False
             assert response.json["database"]["migrations_pending"] == 2
 
+    def test_readyz_migration_check_error(self, client: FlaskClient):
+        """Test readyz returns 503 when the migration check itself fails."""
+        with patch('app.database.check_db_connection', return_value=True), \
+             patch('app.database.get_pending_migrations', side_effect=RuntimeError("bad revision graph")):
+            response = client.get("/health/readyz")
+
+            assert response.status_code == 503
+            assert response.json["ready"] is False
+            assert response.json["database"]["ok"] is False
+            assert "bad revision graph" in response.json["database"]["error"]
+
 
 class TestSSEGatewayHealthCheck:
     """Test SSE Gateway readiness check."""

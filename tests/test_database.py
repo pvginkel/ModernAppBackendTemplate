@@ -23,12 +23,8 @@ class TestUpgradeDatabase:
             assert get_current_revision() is not None
             assert upgrade_database() == []
 
-    def test_recreate_drops_and_applies_every_revision(
-        self, committed_app: Flask, monkeypatch: pytest.MonkeyPatch
-    ):
-        # drop_all_tables() also empties db.metadata, the models' own, which
-        # the CLI's one-shot process can afford and the rest of this run can't.
-        monkeypatch.setattr(db.metadata, "clear", lambda: None)
+    def test_recreate_drops_and_applies_every_revision(self, committed_app: Flask):
+        tables_before = set(db.metadata.tables)
 
         with committed_app.app_context():
             head = get_current_revision()
@@ -39,3 +35,17 @@ class TestUpgradeDatabase:
             assert get_current_revision() == head
             assert get_pending_migrations() == []
             assert "items" in inspect(db.engine).get_table_names()
+
+        # The models' own metadata survives the drop.
+        assert set(db.metadata.tables) == tables_before
+
+    def test_pending_migrations_raises_on_a_broken_database(
+        self, committed_app: Flask, monkeypatch: pytest.MonkeyPatch
+    ):
+        def broken_config() -> None:
+            raise RuntimeError("alembic.ini unreadable")
+
+        monkeypatch.setattr("app.database._get_alembic_config", broken_config)
+
+        with committed_app.app_context(), pytest.raises(RuntimeError, match="unreadable"):
+            get_pending_migrations()
