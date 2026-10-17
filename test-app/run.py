@@ -66,7 +66,8 @@ def main() -> None:
         # No Werkzeug reloader: it runs the app twice, a parent that watches
         # files and a child that serves, and only the child would run the
         # background services and the lifecycle coordinator. One process here;
-        # restarting it on a code change is left to whoever started it.
+        # scripts/dev-watch.sh restarts it on a code change, through SIGTERM
+        # and the lifecycle coordinator's graceful shutdown.
         app.run(host=host, port=port, debug=True, use_reloader=False)
     else:
         lifecycle_coordinator.initialize()
