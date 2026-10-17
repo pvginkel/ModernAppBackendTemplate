@@ -5,12 +5,16 @@ from flask.testing import FlaskClient
 from werkzeug.exceptions import UnsupportedMediaType
 
 from app.config import Settings
+from app.core_exceptions import ExternalServiceException
 from app.exceptions import (
     BusinessLogicException,
     InvalidOperationException,
     RecordNotFoundException,
     ResourceConflictException,
 )
+from app.schemas.common import ApiErrorResponseSchema
+from app.utils import _init_request_id
+from app.utils.flask_error_handlers import register_app_error_handlers
 
 
 class TestExceptionHierarchy:
@@ -156,3 +160,74 @@ class TestUnhandledExceptionText:
 
         assert response.status_code == 500
         assert "secret_table" in response.json["details"]["message"]
+
+
+def _upstream_app() -> Flask:
+    """A bare app with the template's error handlers and a route that fails upstream."""
+    app = Flask(__name__)
+    _init_request_id(app)
+    register_app_error_handlers(app)
+
+    def call_upstream() -> str:
+        raise ExternalServiceException("fetch the user list", "Keycloak answered 503")
+
+    app.add_url_rule("/test-upstream", "test_upstream", call_upstream)
+    return app
+
+
+class TestExternalServiceException:
+    def test_message_and_code(self):
+        error = ExternalServiceException("fetch the user list", "Keycloak answered 503")
+
+        assert isinstance(error, BusinessLogicException)
+        assert error.message == (
+            "Cannot fetch the user list because external service failed: Keycloak answered 503"
+        )
+        assert error.error_code == "EXTERNAL_SERVICE_ERROR"
+        assert (error.operation, error.cause) == ("fetch the user list", "Keycloak answered 503")
+
+    def test_answered_with_502(self):
+        response = _upstream_app().test_client().get(
+            "/test-upstream", headers={"X-Request-ID": "corr-1"}
+        )
+
+        assert response.status_code == 502
+        assert response.json == {
+            "error": "Cannot fetch the user list because external service failed: "
+            "Keycloak answered 503",
+            "details": {"message": "External service request failed"},
+            "code": "EXTERNAL_SERVICE_ERROR",
+            "correlationId": "corr-1",
+        }
+
+
+class TestApiErrorResponseSchema:
+    """The schema documents the envelope build_error_response() builds."""
+
+    ENVELOPE_KEYS = {"error", "details", "code", "correlationId"}
+
+    def _assert_matches(self, body: dict) -> ApiErrorResponseSchema:
+        assert set(body) <= self.ENVELOPE_KEYS
+        assert set(body["details"]) == {"message"}
+        return ApiErrorResponseSchema.model_validate(body)
+
+    def test_business_error_with_code(self):
+        response = _upstream_app().test_client().get("/test-upstream")
+
+        parsed = self._assert_matches(response.json)
+
+        assert parsed.code == "EXTERNAL_SERVICE_ERROR"
+        assert parsed.correlation_id == response.json["correlationId"]
+
+    def test_framework_error_without_code(self, client: FlaskClient):
+        response = client.get("/api/does-not-exist")
+
+        assert response.status_code == 404
+        parsed = self._assert_matches(response.json)
+        assert parsed.code is None
+        assert parsed.details.message == "The requested resource could not be found"
+
+    def test_spec_uses_the_wire_names(self):
+        properties = ApiErrorResponseSchema.model_json_schema()["properties"]
+
+        assert set(properties) == self.ENVELOPE_KEYS

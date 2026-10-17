@@ -23,6 +23,41 @@ class ErrorResponseSchema(BaseModel):
     details: ErrorDetailsSchema | list[ErrorDetailsSchema] = Field(..., description="Additional error details")
 
 
+class ApiErrorDetailsSchema(BaseModel):
+    """The ``details`` object of the error envelope ``build_error_response`` builds."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    message: str = Field(..., description="Human-readable error description")
+
+
+class ApiErrorResponseSchema(BaseModel):
+    """The error envelope every error handler answers with.
+
+    It mirrors ``build_error_response()`` in ``app/utils/flask_error_handlers.py``;
+    change both together. Use it to document error responses in ``@api.validate``,
+    for example ``HTTP_502=ApiErrorResponseSchema`` on an endpoint that calls an
+    external service. One handler differs: a ``pydantic.ValidationError`` raised
+    in a handler answers 400 with ``details.errors``, a list of
+    ``{"message", "field"}``, instead of ``details.message``.
+    """
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    error: str = Field(..., description="Error message", json_schema_extra={"example": "Authorization failed"})
+    details: ApiErrorDetailsSchema = Field(..., description="Error details")
+    code: str | None = Field(
+        None,
+        description="Machine-readable error code; every business-logic exception sets one",
+        json_schema_extra={"example": "AUTHORIZATION_FAILED"},
+    )
+    correlation_id: str | None = Field(
+        None,
+        alias="correlationId",
+        description="The request's correlation ID, when it has one",
+    )
+
+
 class SuccessResponseSchema(BaseModel):
     """Standard success response format."""
 

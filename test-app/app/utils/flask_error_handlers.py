@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import BadRequest, HTTPException
 
+from app.core_exceptions import ExternalServiceException
 from app.exceptions import (
     AuthenticationException,
     AuthorizationException,
@@ -56,6 +57,9 @@ def build_error_response(
     This helper produces the rich JSON envelope used by all error handlers.
     It is also importable for use in before_request hooks and inline
     short-circuit paths (e.g., ai_parts.py, testing.py).
+
+    ``ApiErrorResponseSchema`` in ``app/schemas/common.py`` documents this
+    envelope for the OpenAPI spec; change both together.
     """
     response_data: dict[str, Any] = {
         "error": error,
@@ -257,6 +261,17 @@ def register_business_error_handlers(app: Flask) -> None:
             {"message": "The requested operation cannot be performed"},
             code=error.error_code,
             status_code=409,
+        )
+
+    @app.errorhandler(ExternalServiceException)
+    def handle_external_service(error: ExternalServiceException) -> tuple[Response, int]:
+        _mark_request_failed()
+        logger.warning("External service error: %s", error.message)
+        return build_error_response(
+            error.message,
+            {"message": "External service request failed"},
+            code=error.error_code,
+            status_code=502,
         )
 
     @app.errorhandler(RouteNotAvailableException)
