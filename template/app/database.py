@@ -242,33 +242,6 @@ def upgrade_database(recreate: bool = False) -> list[tuple[str, str]]:
     Returns:
         List of (revision, description) tuples for applied migrations
     """
-    engine = db.engine
-    is_sqlite = engine.dialect.name == "sqlite"
-
-    if recreate and is_sqlite:
-        # SQLite does not support many ALTER operations required by Alembic migrations.
-        # Instead, drop and recreate the schema using SQLAlchemy metadata directly.
-        print("SQLite detected - rebuilding schema using SQLAlchemy metadata")
-        metadata = MetaData()
-        metadata.reflect(bind=engine)
-
-        if metadata.tables:
-            print("Dropping all existing tables...")
-            metadata.drop_all(bind=engine)
-            print("All tables dropped")
-        else:
-            print("No existing tables found to drop")
-
-        # Ensure models are registered before create_all (create_app imports them already).
-        db.create_all()
-        config = _get_alembic_config()
-        with engine.connect() as connection:
-            config.attributes["connection"] = connection
-            command.stamp(config, "head")
-        print("Alembic version stamped to head")
-        print("Database schema created with SQLAlchemy metadata")
-        return []
-
     config = _get_alembic_config()
     applied_migrations: list[tuple[str, str]] = []
 

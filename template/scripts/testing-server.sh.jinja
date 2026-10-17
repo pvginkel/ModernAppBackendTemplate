@@ -24,14 +24,12 @@ cd "$BACKEND_DIR" || {
 HOST="0.0.0.0"
 PORT="$TESTING_BACKEND_PORT"
 DATABASE_URL_OVERRIDE=""
-SQLITE_DB_PATH=""
 
 print_usage() {
     cat <<'EOF'
-Usage: testing-server.sh [--database-url URL] [--sqlite-db PATH] [--host HOST] [--port PORT]
+Usage: testing-server.sh [--database-url URL] [--host HOST] [--port PORT]
 
-  --database-url URL   Database to serve (takes precedence over --sqlite-db)
-  --sqlite-db PATH     SQLite database file to serve
+  --database-url URL   Database to serve
   --host HOST          Host to bind to (default: 0.0.0.0)
   --port PORT          Port to bind to
 EOF
@@ -46,15 +44,6 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             DATABASE_URL_OVERRIDE="$2"
-            shift 2
-            ;;
-        --sqlite-db)
-            if [[ -z "${2:-}" ]]; then
-                echo "Error: --sqlite-db requires a value." >&2
-                print_usage
-                exit 1
-            fi
-            SQLITE_DB_PATH="$2"
             shift 2
             ;;
         --host)
@@ -102,10 +91,6 @@ fi
 if [[ -n "$DATABASE_URL_OVERRIDE" ]]; then
     export DATABASE_URL="$DATABASE_URL_OVERRIDE"
     echo "Using the database given by --database-url"
-    echo
-elif [[ -n "$SQLITE_DB_PATH" ]]; then
-    export DATABASE_URL="sqlite:////${SQLITE_DB_PATH}"
-    echo "Using SQLite database at $SQLITE_DB_PATH"
     echo
 fi
 
