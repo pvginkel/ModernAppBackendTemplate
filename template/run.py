@@ -24,12 +24,7 @@ def main() -> None:
     # Enable debug mode for development and testing environments
     debug_mode = settings.flask_env in ("development", "testing")
 
-    # In debug mode, Werkzeug's reloader runs the app twice: once in the parent
-    # (watching for file changes) and once in the child (actually serving).
-    # Skip background services in the parent to avoid duplicate MQTT connections,
-    # background threads, etc. The child process has WERKZEUG_RUN_MAIN='true'.
-    is_reloader_parent = debug_mode and os.environ.get("WERKZEUG_RUN_MAIN") != "true"
-    app = create_app(settings, skip_background_services=is_reloader_parent)
+    app = create_app(settings)
 
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", DEFAULT_BACKEND_PORT))
@@ -39,21 +34,20 @@ def main() -> None:
 
     if debug_mode:
         app.logger.info("Running in debug mode")
-
-        # Only initialize the shutdown coordinator if we're in an actual
-        # Flask worker process.
-        if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-            lifecycle_coordinator.initialize()
+        lifecycle_coordinator.initialize()
 
         def signal_shutdown(lifecycle_event: LifecycleEvent) -> None:
             if lifecycle_event == LifecycleEvent.AFTER_SHUTDOWN:
-                # Need to call. os._exit. sys.exit doesn't work with the
-                # reloader is exit.
+                # app.run() holds the main thread; sys.exit would not end it.
                 os._exit(0)
 
         lifecycle_coordinator.register_lifecycle_notification(signal_shutdown)
 
-        app.run(host=host, port=port, debug=True)
+        # No Werkzeug reloader: it runs the app twice, a parent that watches
+        # files and a child that serves, and only the child would run the
+        # background services and the lifecycle coordinator. One process here;
+        # restarting it on a code change is left to whoever started it.
+        app.run(host=host, port=port, debug=True, use_reloader=False)
     else:
         lifecycle_coordinator.initialize()
 
