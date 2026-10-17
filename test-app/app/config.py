@@ -195,7 +195,7 @@ class Environment(BaseSettings):
     # ── use_database ───────────────────────────────────────────────────
 
     DATABASE_URL: str = Field(
-        default="postgresql+psycopg://postgres:postgres@localhost:5432/test-app",
+        default="postgresql+psycopg://postgres:postgres@localhost:5432/test_app",
         description="PostgreSQL connection string",
     )
     DB_POOL_SIZE: int = Field(
@@ -368,7 +368,7 @@ class Settings(BaseModel):
     # ── use_database ───────────────────────────────────────────────────
 
     # Sensitive for its password; dump_for_logging() shows the rest of it.
-    database_url: Annotated[str, Sensitive] = "postgresql+psycopg://postgres:postgres@localhost:5432/test-app"
+    database_url: Annotated[str, Sensitive] = "postgresql+psycopg://postgres:postgres@localhost:5432/test_app"
     db_pool_size: int = 20
     db_pool_max_overflow: int = 30
     db_pool_timeout: int = 10

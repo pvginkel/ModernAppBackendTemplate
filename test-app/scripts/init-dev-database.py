@@ -5,6 +5,10 @@ The Postgres sidecar starts empty, so a fresh clone has no database for
 `DATABASE_URL` to point at and `cli upgrade-db` fails before it can run a
 migration. This creates it (and nothing else) — schema is Alembic's job.
 
+It reads DATABASE_URL as the app does: the environment, then .env, then the
+app's default. `kc project setup` seeds .env before it runs this, so the
+database it creates is the one `cli upgrade-db` migrates.
+
 Idempotent: an existing database is left untouched. The test suites never
 call this: they create their own databases (tests/conftest_infrastructure.py).
 """
@@ -13,18 +17,24 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
+from dotenv import load_dotenv
 
 # Keep in step with Settings.database_url in app/config.py.
-DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/test-app"
+DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/test_app"
 
 # Database that always exists, used to issue the CREATE DATABASE.
 MAINTENANCE_DATABASE = "postgres"
 
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+
 
 def main() -> int:
+    # Like the app's settings, a variable already in the environment wins.
+    load_dotenv(_BACKEND_DIR / ".env")
     url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
     parts = urlsplit(url)
 

@@ -25,8 +25,8 @@ author_email:
 
 database_name:
   type: str
-  default: "{{ project_name }}"
-  help: "PostgreSQL database name (default: same as project_name)"
+  default: "{{ project_name | replace('-', '_') }}"
+  help: "PostgreSQL database name (default: project_name with underscores, as the root template's)"
 
 s3_bucket_name:
   type: str
