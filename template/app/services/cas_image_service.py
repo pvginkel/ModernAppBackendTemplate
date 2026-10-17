@@ -69,15 +69,15 @@ class CasImageService:
 
             # Open and process image with PIL
             with Image.open(image_data) as img:
-                # Convert to RGB if necessary (for PNG with transparency, etc.)
-                if img.mode not in ('RGB', 'L'):
-                    img = img.convert('RGB')
+                # Convert to RGB if necessary (Pillow's convert() returns
+                # Image.Image rather than ImageFile, so reassign to a new name)
+                processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
 
                 # Create thumbnail maintaining aspect ratio
-                img.thumbnail((size, size), Image.Resampling.LANCZOS)
+                processed.thumbnail((size, size), Image.Resampling.LANCZOS)
 
                 # Save thumbnail to disk
-                img.save(thumbnail_path, 'JPEG', quality=85, optimize=True)
+                processed.save(thumbnail_path, 'JPEG', quality=85, optimize=True)
 
             return thumbnail_path
 
@@ -99,15 +99,15 @@ class CasImageService:
         try:
             # Try to open the image with PIL
             with Image.open(io.BytesIO(content)) as img:
-                # Convert to RGBA to handle transparency properly
-                if img.mode not in ('RGBA', 'RGB'):
-                    img = img.convert('RGBA')
+                # Convert to RGBA to handle transparency properly (Pillow's
+                # convert() returns Image.Image, so reassign to a new name)
+                processed: Image.Image = img.convert('RGBA') if img.mode not in ('RGBA', 'RGB') else img
 
                 # Create a new BytesIO object for PNG output
                 png_output = io.BytesIO()
 
                 # Save as PNG
-                img.save(png_output, format='PNG')
+                processed.save(png_output, format='PNG')
                 png_output.seek(0)
 
                 return DocumentContentSchema(

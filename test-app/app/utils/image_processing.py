@@ -66,16 +66,16 @@ def resize_image(file_data: bytes, max_width: int, max_height: int) -> bytes:
     """
     try:
         with Image.open(BytesIO(file_data)) as img:
-            # Convert to RGB if necessary
-            if img.mode not in ('RGB', 'L'):
-                img = img.convert('RGB')
+            # Convert to RGB if necessary (Pillow's convert() returns
+            # Image.Image rather than ImageFile, so reassign to a new name)
+            processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
 
             # Calculate new dimensions maintaining aspect ratio
-            img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+            processed.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
 
             # Save to bytes
             output = BytesIO()
-            img.save(output, 'JPEG', quality=85, optimize=True)
+            processed.save(output, 'JPEG', quality=85, optimize=True)
             return output.getvalue()
 
     except Exception as e:
@@ -97,16 +97,16 @@ def create_thumbnail(file_data: bytes, size: int) -> bytes:
     """
     try:
         with Image.open(BytesIO(file_data)) as img:
-            # Convert to RGB if necessary
-            if img.mode not in ('RGB', 'L'):
-                img = img.convert('RGB')
+            # Convert to RGB if necessary (Pillow's convert() returns
+            # Image.Image rather than ImageFile, so reassign to a new name)
+            processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
 
             # Create thumbnail maintaining aspect ratio
-            img.thumbnail((size, size), Image.Resampling.LANCZOS)
+            processed.thumbnail((size, size), Image.Resampling.LANCZOS)
 
             # Save as JPEG
             output = BytesIO()
-            img.save(output, 'JPEG', quality=85, optimize=True)
+            processed.save(output, 'JPEG', quality=85, optimize=True)
             return output.getvalue()
 
     except Exception as e:
@@ -176,14 +176,14 @@ def optimize_image_for_storage(file_data: bytes, max_size_mb: float = 5.0) -> by
 
     try:
         with Image.open(BytesIO(file_data)) as img:
-            # Convert to RGB if necessary
-            if img.mode not in ('RGB', 'L'):
-                img = img.convert('RGB')
+            # Convert to RGB if necessary (Pillow's convert() returns
+            # Image.Image rather than ImageFile, so reassign to a new name)
+            processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
 
             # Try different quality settings
             for quality in [85, 75, 65, 55, 45]:
                 output = BytesIO()
-                img.save(output, 'JPEG', quality=quality, optimize=True)
+                processed.save(output, 'JPEG', quality=quality, optimize=True)
                 optimized_data = output.getvalue()
 
                 if len(optimized_data) <= max_size_bytes:
@@ -191,10 +191,10 @@ def optimize_image_for_storage(file_data: bytes, max_size_mb: float = 5.0) -> by
 
             # If still too large, resize the image
             scale_factor = (max_size_bytes / len(file_data)) ** 0.5
-            new_width = int(img.width * scale_factor)
-            new_height = int(img.height * scale_factor)
+            new_width = int(processed.width * scale_factor)
+            new_height = int(processed.height * scale_factor)
 
-            resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            resized_img = processed.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
             output = BytesIO()
             resized_img.save(output, 'JPEG', quality=75, optimize=True)
