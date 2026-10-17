@@ -149,6 +149,23 @@ class TestHandleUpgradeDb:
         assert "postgresql+psycopg://localhost:5432/upgrade-test" in output
         assert "Using database" in output
 
+    def test_target_database_hides_the_password(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The printed URI keeps user, host and database, and masks the password."""
+        app = _make_app("postgresql+psycopg://app:s3cret@db:5432/upgrade-test")
+
+        monkeypatch.setattr(cli, "check_db_connection", lambda: True)
+        monkeypatch.setattr(cli, "get_current_revision", lambda: None)
+        monkeypatch.setattr(cli, "get_pending_migrations", lambda: [])
+        monkeypatch.setattr(cli, "post_migration_hook", lambda a: None)
+
+        cli.handle_upgrade_db(app=app)
+
+        output = capsys.readouterr().out
+        assert "s3cret" not in output
+        assert "postgresql+psycopg://app:***@db:5432/upgrade-test" in output
+
     def test_recreate_without_confirm_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """--recreate without --yes-i-am-sure exits before any work."""
         app = _make_app()

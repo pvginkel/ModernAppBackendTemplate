@@ -8,23 +8,43 @@ from paste.translogger import TransLogger  # type: ignore[import-untyped]
 from waitress import serve
 
 from app import create_app
+from app.app import App
 from app.config import Settings
 from app.consts import DEFAULT_BACKEND_PORT
 from app.utils.lifecycle_coordinator import LifecycleEvent
+from app.utils.log_formatter import ExtraFieldFormatter, resolve_log_level
+
+logger = logging.getLogger(__name__)
+
+
+def _log_app_config(app: App) -> None:
+    """Dump AppSettings, if it can redact itself.
+
+    AppSettings is app-owned. One without dump_for_logging() predates the
+    Sensitive marks, so its secrets would go to the log unmasked: skip it.
+    """
+    dump = getattr(app.container.app_config(), "dump_for_logging", None)
+    if callable(dump):
+        for key, value in dump().items():
+            logger.info("app_config  %-40s = %s", key, value)
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
-
     settings = Settings.load()
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(ExtraFieldFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    logging.basicConfig(level=resolve_log_level(settings.log_level), handlers=[handler])
+
+    # What this process booted with, secrets shown as ***
+    for key, value in settings.dump_for_logging().items():
+        logger.info("settings    %-40s = %s", key, value)
 
     # Enable debug mode for development and testing environments
     debug_mode = settings.flask_env in ("development", "testing")
 
     app = create_app(settings)
+    _log_app_config(app)
 
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", DEFAULT_BACKEND_PORT))

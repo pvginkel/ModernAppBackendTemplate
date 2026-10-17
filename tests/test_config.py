@@ -1,12 +1,21 @@
 """Tests for configuration management."""
 
-import pytest
+import logging
+from types import SimpleNamespace
 
+import pytest
+from pydantic import BaseModel
+
+import run
+from app.app_config import AppSettings
 from app.config import (
     TEST_DB_POOL_MAX_OVERFLOW,
     TEST_DB_POOL_SIZE,
     Environment,
+    Sensitive,
     Settings,
+    dump_config_for_logging,
+    is_sensitive,
 )
 from app.exceptions import ConfigurationError
 from tests.conftest_infrastructure import _build_test_settings
@@ -249,3 +258,164 @@ class TestTestModePool:
             "pool_pre_ping": True,
             "echo_pool": False,
         }
+
+
+class TestSensitiveMarks:
+    """Every secret on Settings carries the Sensitive mark.
+
+    A new secret field that is not in this list and not marked shows up in
+    the boot log in clear text; add it here and mark it.
+    """
+
+    SETTINGS_SECRETS = {
+        "secret_key",
+        "drain_auth_key",
+        "database_url",
+        "oidc_client_secret",
+        "s3_access_key_id",
+        "s3_secret_access_key",
+        "sse_callback_secret",
+    }
+
+    def test_every_secret_is_marked(self):
+        fields = Settings.model_fields
+        unmarked = {name for name in self.SETTINGS_SECRETS if not is_sensitive(fields[name])}
+        assert unmarked == set()
+
+    def test_nothing_else_is_marked(self):
+        marked = {name for name, info in Settings.model_fields.items() if is_sensitive(info)}
+        assert marked == self.SETTINGS_SECRETS
+
+    def test_marker_instance_counts_too(self):
+        from typing import Annotated
+
+        class Model(BaseModel):
+            token: Annotated[str, Sensitive()] = "t"
+
+        assert is_sensitive(Model.model_fields["token"])
+
+
+class TestDumpForLogging:
+    def test_settings_dump_covers_every_field(self):
+        assert set(Settings().dump_for_logging()) == set(Settings.model_fields)
+
+    def test_secrets_are_redacted(self):
+        settings = Settings(
+            secret_key="super-secret-key",
+            drain_auth_key="drain-key",
+            oidc_client_secret="client-secret",
+            s3_secret_access_key="s3-secret",
+            sse_callback_secret="sse-secret",
+        )
+        dump = settings.dump_for_logging()
+
+        for name in ("secret_key", "drain_auth_key", "oidc_client_secret",
+                     "s3_secret_access_key", "sse_callback_secret"):
+            assert dump[name] == "***"
+        for secret in ("super-secret-key", "drain-key", "client-secret", "s3-secret", "sse-secret"):
+            assert not any(secret in value for value in dump.values())
+
+    def test_database_url_shows_everything_but_the_password(self):
+        settings = Settings(database_url="postgresql+psycopg://app:pa55word@db:5432/app")
+
+        dump = settings.dump_for_logging()
+
+        assert "pa55word" not in dump["database_url"]
+        assert dump["database_url"] == repr("postgresql+psycopg://app:***@db:5432/app")
+
+    def test_other_fields_show_their_repr(self):
+        settings = Settings(flask_env="testing", task_max_workers=7)
+        dump = settings.dump_for_logging()
+
+        assert dump["flask_env"] == "'testing'"
+        assert dump["task_max_workers"] == "7"
+        assert dump["log_level"] == "'INFO'"
+
+    def test_app_settings_dump_covers_every_field(self):
+        assert set(AppSettings().dump_for_logging()) == set(AppSettings.model_fields)
+
+    def test_dump_config_for_logging_on_any_model(self):
+        from typing import Annotated
+
+        class Model(BaseModel):
+            name: str = "x"
+            token: Annotated[str, Sensitive] = "t0ken"
+
+        assert dump_config_for_logging(Model()) == {"name": "'x'", "token": "***"}
+
+
+class TestBootLogging:
+    def test_app_settings_with_a_dump_are_logged(self, caplog: pytest.LogCaptureFixture):
+        app_config = SimpleNamespace(dump_for_logging=lambda: {"api_url": "'http://x'"})
+        app = SimpleNamespace(container=SimpleNamespace(app_config=lambda: app_config))
+
+        with caplog.at_level(logging.INFO, logger="run"):
+            run._log_app_config(app)  # type: ignore[arg-type]
+
+        assert "api_url" in caplog.text
+
+    def test_app_settings_without_a_dump_are_skipped(self, caplog: pytest.LogCaptureFixture):
+        """An app-owned AppSettings from before the Sensitive marks is not dumped."""
+        app_config = SimpleNamespace(api_key="must-not-appear")
+        app = SimpleNamespace(container=SimpleNamespace(app_config=lambda: app_config))
+
+        with caplog.at_level(logging.INFO, logger="run"):
+            run._log_app_config(app)  # type: ignore[arg-type]
+
+        assert "must-not-appear" not in caplog.text
+        assert "app_config" not in caplog.text
+
+
+class TestLogLevel:
+    def test_default_is_info(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        assert Settings.load(Environment(_env_file=None)).log_level == "INFO"  # type: ignore[call-arg]
+
+    def test_log_level_from_the_environment(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        assert Settings.load().log_level == "DEBUG"
+
+    @pytest.mark.parametrize(
+        ("name", "level"),
+        [
+            ("DEBUG", logging.DEBUG),
+            ("info", logging.INFO),
+            ("Warning", logging.WARNING),
+            ("ERROR", logging.ERROR),
+            ("critical", logging.CRITICAL),
+        ],
+    )
+    def test_level_names_resolve_case_insensitively(self, name: str, level: int):
+        from app.utils.log_formatter import resolve_log_level
+
+        assert resolve_log_level(name) == level
+
+    @pytest.mark.parametrize("name", ["verbose", "", "basicConfig"])
+    def test_unknown_level_falls_back_to_info(self, name: str):
+        from app.utils.log_formatter import resolve_log_level
+
+        assert resolve_log_level(name) == logging.INFO
+
+
+class TestExtraFieldFormatter:
+    def _record(self, **extra: object) -> logging.LogRecord:
+        record = logging.LogRecord("app.x", logging.INFO, __file__, 1, "Imported %s", ("item",), None)
+        for key, value in extra.items():
+            setattr(record, key, value)
+        return record
+
+    def test_extra_fields_follow_the_message_sorted(self):
+        from app.utils.log_formatter import ExtraFieldFormatter
+
+        formatter = ExtraFieldFormatter("%(name)s: %(message)s")
+
+        line = formatter.format(self._record(source="csv", item_id=42))
+
+        assert line == "app.x: Imported item | item_id=42 source=csv"
+
+    def test_no_extra_fields_leaves_the_line_alone(self):
+        from app.utils.log_formatter import ExtraFieldFormatter
+
+        formatter = ExtraFieldFormatter("%(name)s: %(message)s")
+
+        assert formatter.format(self._record()) == "app.x: Imported item"

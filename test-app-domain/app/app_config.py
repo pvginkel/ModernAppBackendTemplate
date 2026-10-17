@@ -6,6 +6,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.config import dump_config_for_logging
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # CAS thumbnails are a local cache: every file can be regenerated from the S3
@@ -34,6 +36,10 @@ class AppSettings(BaseModel):
 
     # Local cache directory for CAS thumbnails (CasImageService)
     thumbnail_storage_path: Path = _DEFAULT_THUMBNAIL_STORAGE_PATH
+
+    def dump_for_logging(self) -> dict[str, str]:
+        """Every setting, for the boot log, with the Sensitive ones as ``***``."""
+        return dump_config_for_logging(self)
 
     @classmethod
     def load(cls, env: "AppEnvironment | None" = None, flask_env: str = "development") -> "AppSettings":

@@ -34,7 +34,7 @@ def main() -> int:
 
     database = parts.path.lstrip("/")
     if not database:
-        print(f"No database name in DATABASE_URL: {url}", file=sys.stderr)
+        print(f"No database name in DATABASE_URL (host {parts.hostname})", file=sys.stderr)
         return 1
 
     # psycopg wants a plain postgresql:// conninfo, not SQLAlchemy's

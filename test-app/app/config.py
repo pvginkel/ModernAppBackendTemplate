@@ -19,19 +19,45 @@ Fields are organized by feature flag so each group can be independently enabled:
 - use_sse: SSE_*, FRONTEND_VERSION_URL
 
 App-specific fields live in app/app_config.py as AppSettings.
+
+Fields that hold a secret are annotated ``Annotated[str, Sensitive]``, so the
+settings dump at boot (``dump_for_logging()``) shows them as ``***``.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy import make_url
 
 # Project root directory (parent of app/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Default secret key that must be changed in production
 _DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
+
+
+class Sensitive:
+    """Marks a settings field that holds a secret: ``Annotated[str, Sensitive]``.
+
+    The settings dump shows such a field as ``***``. Mark every new secret on
+    Settings and AppSettings this way.
+    """
+
+
+def is_sensitive(field_info: FieldInfo) -> bool:
+    """Whether a Pydantic field carries the Sensitive marker."""
+    return any(m is Sensitive or isinstance(m, Sensitive) for m in field_info.metadata)
+
+
+def dump_config_for_logging(model: BaseModel) -> dict[str, str]:
+    """Every field of a settings model, for the log: ``repr()``, or ``***`` if Sensitive."""
+    return {
+        name: "***" if is_sensitive(field_info) else repr(getattr(model, name))
+        for name, field_info in type(model).model_fields.items()
+    }
 
 # Connection pool under FLASK_ENV=testing: the pytest apps and the Playwright
 # backends. They share the local PostgreSQL server (50 connections) with the
@@ -85,6 +111,10 @@ class Environment(BaseSettings):
     DRAIN_AUTH_KEY: str = Field(
         default="",
         description="Bearer token for authenticating drain endpoint access"
+    )
+    LOG_LEVEL: str = Field(
+        default="INFO",
+        description="Root logger level (DEBUG, INFO, WARNING, ERROR, CRITICAL); anything else means INFO"
     )
 
     # ── use_database ───────────────────────────────────────────────────
@@ -244,7 +274,7 @@ class Settings(BaseModel):
 
     # ── Core (always present) ──────────────────────────────────────────
 
-    secret_key: str = _DEFAULT_SECRET_KEY
+    secret_key: Annotated[str, Sensitive] = _DEFAULT_SECRET_KEY
     flask_env: str = "development"
     debug: bool = True
     cors_origins: list[str] = Field(default=["http://localhost:3000"])
@@ -253,11 +283,13 @@ class Settings(BaseModel):
     task_cleanup_interval_seconds: int = 600
     metrics_update_interval: int = 60
     graceful_shutdown_timeout: int = 600
-    drain_auth_key: str = ""
+    drain_auth_key: Annotated[str, Sensitive] = ""
+    log_level: str = "INFO"
 
     # ── use_database ───────────────────────────────────────────────────
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/test-app"
+    # Sensitive for its password; dump_for_logging() shows the rest of it.
+    database_url: Annotated[str, Sensitive] = "postgresql+psycopg://postgres:postgres@localhost:5432/test-app"
     db_pool_size: int = 20
     db_pool_max_overflow: int = 30
     db_pool_timeout: int = 10
@@ -274,7 +306,7 @@ class Settings(BaseModel):
     oidc_enabled: bool = False
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
+    oidc_client_secret: Annotated[str | None, Sensitive] = None
     oidc_scopes: str = "openid profile email"
     oidc_audience: str | None = None  # Resolved: falls back to oidc_client_id via load()
     oidc_clock_skew_seconds: int = 30
@@ -287,8 +319,8 @@ class Settings(BaseModel):
     # ── use_s3 ─────────────────────────────────────────────────────────
 
     s3_endpoint_url: str = "http://localhost:9000"
-    s3_access_key_id: str = "admin"
-    s3_secret_access_key: str = "password"
+    s3_access_key_id: Annotated[str, Sensitive] = "admin"
+    s3_secret_access_key: Annotated[str, Sensitive] = "password"
     s3_bucket_name: str = "test-app-attachments"
     s3_region: str = "us-east-1"
     s3_use_ssl: bool = False
@@ -298,7 +330,7 @@ class Settings(BaseModel):
     frontend_version_url: str = "http://localhost:3000/version.json"
     sse_heartbeat_interval: int = 5  # Resolved: 30 for production via load()
     sse_gateway_url: str = "http://localhost:3002"
-    sse_callback_secret: str = ""
+    sse_callback_secret: Annotated[str, Sensitive] = ""
 
     @property
     def is_testing(self) -> bool:
@@ -309,6 +341,15 @@ class Settings(BaseModel):
     def is_production(self) -> bool:
         """Check if running in production environment."""
         return self.flask_env == "production"
+
+    def dump_for_logging(self) -> dict[str, str]:
+        """Every setting, for the boot log, with the Sensitive ones as ``***``."""
+        dump = dump_config_for_logging(self)
+        # The URL without its password still says which database this is.
+        dump["database_url"] = repr(
+            make_url(self.database_url).render_as_string(hide_password=True)
+        )
+        return dump
 
     def to_flask_config(self) -> "FlaskConfig":
         """Create Flask configuration object from settings."""
@@ -424,6 +465,7 @@ class Settings(BaseModel):
             metrics_update_interval=env.METRICS_UPDATE_INTERVAL,
             graceful_shutdown_timeout=env.GRACEFUL_SHUTDOWN_TIMEOUT,
             drain_auth_key=env.DRAIN_AUTH_KEY,
+            log_level=env.LOG_LEVEL,
             # use_database
             database_url=env.DATABASE_URL,
             db_pool_size=db_pool_size,

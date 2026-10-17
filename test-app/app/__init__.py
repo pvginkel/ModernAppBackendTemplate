@@ -103,15 +103,17 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     # Enable stderr logging in testing mode so that request logs and exception
     # tracebacks appear in the process output captured by Playwright.
     if settings.is_testing:
+        from app.utils.log_formatter import ExtraFieldFormatter, resolve_log_level
+
         root_logger = logging.getLogger()
         if not any(
             isinstance(h, logging.StreamHandler) and getattr(h, 'stream', None) is sys.stderr
             for h in root_logger.handlers
         ):
             stderr_handler = logging.StreamHandler(sys.stderr)
-            stderr_handler.setFormatter(logging.Formatter('%(name)s %(levelname)s: %(message)s'))
+            stderr_handler.setFormatter(ExtraFieldFormatter('%(name)s %(levelname)s: %(message)s'))
             root_logger.addHandler(stderr_handler)
-        root_logger.setLevel(logging.INFO)
+        root_logger.setLevel(resolve_log_level(settings.log_level))
 
     # Set up log capture handler in testing mode
     if settings.is_testing:

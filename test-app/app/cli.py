@@ -4,6 +4,7 @@ import sys
 
 import click
 from dotenv import load_dotenv
+from sqlalchemy import make_url
 
 from app import create_app
 from app.app import App
@@ -48,6 +49,11 @@ def load_test_data(ctx: click.Context, yes_i_am_sure: bool) -> None:
     )
 
 
+def _database_for_display(app: App) -> str:
+    """The database URL without its password, to tell the operator the target."""
+    return make_url(app.config["SQLALCHEMY_DATABASE_URI"]).render_as_string(hide_password=True)
+
+
 def handle_upgrade_db(
     app: App, recreate: bool = False, confirmed: bool = False
 ) -> None:
@@ -62,7 +68,7 @@ def handle_upgrade_db(
             sys.exit(1)
 
         # Let operator know which database is targeted
-        print(f"Using database: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        print(f"Using database: {_database_for_display(app)}")
 
         # Safety check for recreate
         if recreate and not confirmed:
@@ -127,7 +133,7 @@ def handle_load_test_data(app: App, confirmed: bool = False) -> None:
             sys.exit(1)
 
         # Let operator know which database is targeted
-        print(f"Using database: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        print(f"Using database: {_database_for_display(app)}")
 
         # Safety check for confirmation
         if not confirmed:
