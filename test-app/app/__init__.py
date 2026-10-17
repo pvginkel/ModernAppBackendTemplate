@@ -96,6 +96,10 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
     from app.utils import _init_request_id
     _init_request_id(app)
 
+    # Request count and duration for every route
+    from app.utils.http_metrics import register_http_metrics
+    register_http_metrics(app)
+
     # Enable stderr logging in testing mode so that request logs and exception
     # tracebacks appear in the process output captured by Playwright.
     if settings.is_testing:

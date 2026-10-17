@@ -97,7 +97,6 @@ class TestDiagnosticsServiceIntegration:
             assert hasattr(app_with_services, "diagnostics_service")
             service = app_with_services.diagnostics_service
 
-            assert hasattr(service, "request_duration_seconds")
             assert hasattr(service, "request_query_count")
             assert hasattr(service, "query_duration_seconds")
         finally:
@@ -128,7 +127,6 @@ class TestDiagnosticsMetrics:
         )
         service = DiagnosticsService(settings)
 
-        assert service.request_duration_seconds is not None
         assert service.request_query_count is not None
         assert service.request_query_time_seconds is not None
         assert service.request_python_time_seconds is not None
