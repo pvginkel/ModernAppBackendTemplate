@@ -1,6 +1,6 @@
 __pycache__
-.env
-.env.test
+.env*
+!.env.example
 .coverage
 /tmp
 /MagicMock
