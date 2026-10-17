@@ -419,3 +419,16 @@ class TestExtraFieldFormatter:
         formatter = ExtraFieldFormatter("%(name)s: %(message)s")
 
         assert formatter.format(self._record()) == "app.x: Imported item"
+
+
+class TestUploadLimit:
+    def test_default_is_50_mb(self):
+        assert Settings().to_flask_config().MAX_CONTENT_LENGTH == 50 * 1024 * 1024
+
+    def test_from_the_environment(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("MAX_UPLOAD_SIZE_MB", "200")
+
+        settings = Settings.load()
+
+        assert settings.max_upload_size_mb == 200
+        assert settings.to_flask_config().MAX_CONTENT_LENGTH == 200 * 1024 * 1024

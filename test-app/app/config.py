@@ -116,6 +116,10 @@ class Environment(BaseSettings):
         default="INFO",
         description="Root logger level (DEBUG, INFO, WARNING, ERROR, CRITICAL); anything else means INFO"
     )
+    MAX_UPLOAD_SIZE_MB: int = Field(
+        default=50,
+        description="Largest request body accepted, in MB; a larger one gets 413"
+    )
 
     # ── use_database ───────────────────────────────────────────────────
 
@@ -285,6 +289,7 @@ class Settings(BaseModel):
     graceful_shutdown_timeout: int = 600
     drain_auth_key: Annotated[str, Sensitive] = ""
     log_level: str = "INFO"
+    max_upload_size_mb: int = 50
 
     # ── use_database ───────────────────────────────────────────────────
 
@@ -355,6 +360,7 @@ class Settings(BaseModel):
         """Create Flask configuration object from settings."""
         return FlaskConfig(
             SECRET_KEY=self.secret_key,
+            MAX_CONTENT_LENGTH=self.max_upload_size_mb * 1024 * 1024,
             SQLALCHEMY_DATABASE_URI=self.database_url,
             SQLALCHEMY_TRACK_MODIFICATIONS=False,
             SQLALCHEMY_ENGINE_OPTIONS=self.sqlalchemy_engine_options,
@@ -466,6 +472,7 @@ class Settings(BaseModel):
             graceful_shutdown_timeout=env.GRACEFUL_SHUTDOWN_TIMEOUT,
             drain_auth_key=env.DRAIN_AUTH_KEY,
             log_level=env.LOG_LEVEL,
+            max_upload_size_mb=env.MAX_UPLOAD_SIZE_MB,
             # use_database
             database_url=env.DATABASE_URL,
             db_pool_size=db_pool_size,
@@ -516,11 +523,13 @@ class FlaskConfig:
     def __init__(
         self,
         SECRET_KEY: str,
+        MAX_CONTENT_LENGTH: int,
         SQLALCHEMY_DATABASE_URI: str,
         SQLALCHEMY_TRACK_MODIFICATIONS: bool,
         SQLALCHEMY_ENGINE_OPTIONS: dict[str, Any],
     ) -> None:
         self.SECRET_KEY = SECRET_KEY
+        self.MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH
         self.SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI
         self.SQLALCHEMY_TRACK_MODIFICATIONS = SQLALCHEMY_TRACK_MODIFICATIONS
         self.SQLALCHEMY_ENGINE_OPTIONS = SQLALCHEMY_ENGINE_OPTIONS

@@ -1,7 +1,8 @@
 """Tests for error handling and exception hierarchy."""
 
-
+from flask import Flask, request
 from flask.testing import FlaskClient
+from werkzeug.exceptions import UnsupportedMediaType
 
 from app.exceptions import (
     BusinessLogicException,
@@ -67,3 +68,44 @@ class TestErrorResponses:
         data = response.get_json()
         # Should be a UUID-like string
         assert len(data["correlationId"]) > 0
+
+
+class TestHttpErrors:
+    """Werkzeug HTTP errors keep their status in the JSON envelope.
+
+    Each test adds routes, which only an app that has served no request yet
+    accepts, so they run on an app of their own.
+    """
+
+    def test_body_over_the_upload_limit_is_413(self, committed_app: Flask):
+        committed_app.config["MAX_CONTENT_LENGTH"] = 10
+        committed_app.add_url_rule(
+            "/test-upload", "test_upload", lambda: str(len(request.get_data())), methods=["POST"]
+        )
+
+        response = committed_app.test_client().post("/test-upload", data=b"x" * 100)
+
+        assert response.status_code == 413
+        assert response.json["error"] == "Request Entity Too Large"
+
+    def test_body_within_the_limit_passes(self, committed_app: Flask):
+        committed_app.config["MAX_CONTENT_LENGTH"] = 1000
+        committed_app.add_url_rule(
+            "/test-upload", "test_upload", lambda: str(len(request.get_data())), methods=["POST"]
+        )
+
+        response = committed_app.test_client().post("/test-upload", data=b"x" * 100)
+
+        assert response.status_code == 200
+        assert response.get_data(as_text=True) == "100"
+
+    def test_other_http_errors_keep_their_status(self, committed_app: Flask):
+        def unsupported() -> str:
+            raise UnsupportedMediaType()
+
+        committed_app.add_url_rule("/test-415", "test_415", unsupported)
+
+        response = committed_app.test_client().get("/test-415")
+
+        assert response.status_code == 415
+        assert response.json["error"] == "Unsupported Media Type"

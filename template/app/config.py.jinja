@@ -124,6 +124,10 @@ class Environment(BaseSettings):
         default="INFO",
         description="Root logger level (DEBUG, INFO, WARNING, ERROR, CRITICAL); anything else means INFO"
     )
+    MAX_UPLOAD_SIZE_MB: int = Field(
+        default=50,
+        description="Largest request body accepted, in MB; a larger one gets 413"
+    )
 {% if use_database %}
 
     # ── use_database ───────────────────────────────────────────────────
@@ -301,6 +305,7 @@ class Settings(BaseModel):
     graceful_shutdown_timeout: int = 600
     drain_auth_key: Annotated[str, Sensitive] = ""
     log_level: str = "INFO"
+    max_upload_size_mb: int = 50
 {% if use_database %}
 
     # ── use_database ───────────────────────────────────────────────────
@@ -381,6 +386,7 @@ class Settings(BaseModel):
         """Create Flask configuration object from settings."""
         return FlaskConfig(
             SECRET_KEY=self.secret_key,
+            MAX_CONTENT_LENGTH=self.max_upload_size_mb * 1024 * 1024,
 {% if use_database %}
             SQLALCHEMY_DATABASE_URI=self.database_url,
             SQLALCHEMY_TRACK_MODIFICATIONS=False,
@@ -502,6 +508,7 @@ class Settings(BaseModel):
             graceful_shutdown_timeout=env.GRACEFUL_SHUTDOWN_TIMEOUT,
             drain_auth_key=env.DRAIN_AUTH_KEY,
             log_level=env.LOG_LEVEL,
+            max_upload_size_mb=env.MAX_UPLOAD_SIZE_MB,
 {% if use_database %}
             # use_database
             database_url=env.DATABASE_URL,
@@ -560,6 +567,7 @@ class FlaskConfig:
     def __init__(
         self,
         SECRET_KEY: str,
+        MAX_CONTENT_LENGTH: int,
 {% if use_database %}
         SQLALCHEMY_DATABASE_URI: str,
         SQLALCHEMY_TRACK_MODIFICATIONS: bool,
@@ -567,6 +575,7 @@ class FlaskConfig:
 {% endif %}
     ) -> None:
         self.SECRET_KEY = SECRET_KEY
+        self.MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH
 {% if use_database %}
         self.SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI
         self.SQLALCHEMY_TRACK_MODIFICATIONS = SQLALCHEMY_TRACK_MODIFICATIONS

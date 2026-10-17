@@ -4,7 +4,7 @@ Provides modular registration of Flask-native error handlers that convert
 exceptions into rich JSON error responses. Three registration functions
 allow layered composition:
 
-- register_core_error_handlers: Pydantic ValidationError, IntegrityError, HTTP 404/405/500
+- register_core_error_handlers: Pydantic ValidationError, IntegrityError, HTTP errors
 - register_business_error_handlers: All BusinessLogicException subclasses
 - register_app_error_handlers: Convenience wrapper that calls both of the above
 """
@@ -16,7 +16,7 @@ from flask import Flask, g, jsonify
 from flask.wrappers import Response
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
-from werkzeug.exceptions import BadRequest
+from werkzeug.exceptions import BadRequest, HTTPException
 
 from app.exceptions import (
     AuthenticationException,
@@ -77,7 +77,8 @@ def register_core_error_handlers(app: Flask) -> None:
     """Register error handlers for framework-level exceptions.
 
     Handles Pydantic ValidationError, SQLAlchemy IntegrityError, Werkzeug
-    BadRequest, and HTTP status codes 404, 405, and 500.
+    BadRequest, HTTP status codes 404, 405 and 500, and any other Werkzeug
+    HTTP error with its own status.
     """
 
     @app.errorhandler(BadRequest)
@@ -158,6 +159,19 @@ def register_core_error_handlers(app: Flask) -> None:
             "Method not allowed",
             {"message": "The HTTP method is not allowed for this endpoint"},
             status_code=405,
+        )
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(error: HTTPException) -> tuple[Response, int]:
+        """Handle any other HTTP error, such as 413 for a body over MAX_UPLOAD_SIZE_MB.
+
+        Without it the Exception catch-all below would turn them into 500s.
+        """
+        _mark_request_failed()
+        return build_error_response(
+            error.name,
+            {"message": error.description or error.name},
+            status_code=error.code or 500,
         )
 
     @app.errorhandler(500)
