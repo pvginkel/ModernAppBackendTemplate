@@ -3,12 +3,15 @@
 import pytest
 from flask import Flask
 
+from app import create_app
+from app.app_config import AppSettings
 from app.config import Settings
 from app.services.diagnostics_service import (
     DiagnosticsService,
     QueryInfo,
     RequestDiagnostics,
 )
+from tests.conftest_infrastructure import _dispose_app
 
 
 class TestRequestDiagnostics:
@@ -45,6 +48,8 @@ class TestRequestDiagnostics:
         assert diag.python_time_ms > 0
 
 
+# DiagnosticsService registers its metrics when it is constructed.
+@pytest.mark.usefixtures("clear_prometheus_registry")
 class TestDiagnosticsServiceInit:
     """Tests for DiagnosticsService initialization."""
 
@@ -57,7 +62,6 @@ class TestDiagnosticsServiceInit:
     def test_service_enabled_via_settings(self):
         """Test enabling diagnostics via settings."""
         settings = Settings(
-            database_url="sqlite:///:memory:",
             flask_env="testing",
             diagnostics_enabled=True,
         )
@@ -67,7 +71,6 @@ class TestDiagnosticsServiceInit:
     def test_threshold_configuration(self):
         """Test custom threshold configuration."""
         settings = Settings(
-            database_url="sqlite:///:memory:",
             flask_env="testing",
             diagnostics_enabled=True,
             diagnostics_slow_query_threshold_ms=50,
@@ -81,14 +84,24 @@ class TestDiagnosticsServiceInit:
 class TestDiagnosticsServiceIntegration:
     """Integration tests with Flask and SQLAlchemy."""
 
-    def test_request_timing_recorded(self, app: Flask):
-        """Test that the diagnostics service exists on the app."""
-        assert hasattr(app, "diagnostics_service")
-        service = app.diagnostics_service
+    @pytest.mark.usefixtures("clear_prometheus_registry")
+    def test_request_timing_recorded(
+        self, app: Flask, test_settings: Settings, test_app_settings: AppSettings
+    ):
+        """Test that an app with background services carries the diagnostics service."""
+        settings = test_settings.model_copy(
+            update={"database_url": app.config["SQLALCHEMY_DATABASE_URI"]}
+        )
+        app_with_services = create_app(settings, app_settings=test_app_settings)
+        try:
+            assert hasattr(app_with_services, "diagnostics_service")
+            service = app_with_services.diagnostics_service
 
-        assert hasattr(service, "request_duration_seconds")
-        assert hasattr(service, "request_query_count")
-        assert hasattr(service, "query_duration_seconds")
+            assert hasattr(service, "request_duration_seconds")
+            assert hasattr(service, "request_query_count")
+            assert hasattr(service, "query_duration_seconds")
+        finally:
+            _dispose_app(app_with_services)
 
     def test_query_tracking_structure(self):
         """Test QueryInfo data structure."""
@@ -103,13 +116,13 @@ class TestDiagnosticsServiceIntegration:
         assert query.parameters == {"key": "ABCD"}
 
 
+@pytest.mark.usefixtures("clear_prometheus_registry")
 class TestDiagnosticsMetrics:
     """Tests for Prometheus metrics initialization."""
 
     def test_all_metrics_initialized(self):
         """Test that all required metrics are initialized."""
         settings = Settings(
-            database_url="sqlite:///:memory:",
             flask_env="testing",
             diagnostics_enabled=True,
         )

@@ -2,10 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from flask import Flask
 from flask.testing import FlaskClient
-
-from tests.testing_utils import StubLifecycleCoordinator
 
 
 class TestHealthEndpoints:
@@ -23,15 +22,13 @@ class TestHealthEndpoints:
             assert response.json["status"] == "ready"
             assert response.json["ready"] is True
 
-    def test_readyz_when_shutting_down(self, app: Flask, client: FlaskClient):
+    def test_readyz_when_shutting_down(
+        self, app: Flask, client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test readiness probe returns 503 when shutting down."""
-        with app.app_context():
-            coordinator = app.container.lifecycle_coordinator()
-
-            if isinstance(coordinator, StubLifecycleCoordinator):
-                coordinator.simulate_shutdown()
-            else:
-                coordinator._shutting_down = True
+        # monkeypatch, so the session app is not left shutting down.
+        coordinator = app.container.lifecycle_coordinator()
+        monkeypatch.setattr(coordinator, "is_shutting_down", lambda: True)
 
         response = client.get("/health/readyz")
 
@@ -47,15 +44,12 @@ class TestHealthEndpoints:
         assert response.json["status"] == "alive"
         assert response.json["ready"] is True
 
-    def test_healthz_during_shutdown(self, app: Flask, client: FlaskClient):
+    def test_healthz_during_shutdown(
+        self, app: Flask, client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    ):
         """Test liveness probe returns 200 even during shutdown."""
-        with app.app_context():
-            coordinator = app.container.lifecycle_coordinator()
-
-            if isinstance(coordinator, StubLifecycleCoordinator):
-                coordinator.simulate_shutdown()
-            else:
-                coordinator._shutting_down = True
+        coordinator = app.container.lifecycle_coordinator()
+        monkeypatch.setattr(coordinator, "is_shutting_down", lambda: True)
 
         response = client.get("/health/healthz")
 

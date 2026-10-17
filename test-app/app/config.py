@@ -9,7 +9,7 @@ Usage:
     settings = Settings.load()
 
     # Tests: Construct directly with test values
-    settings = Settings(database_url="sqlite://", secret_key="test", ...)
+    settings = Settings(secret_key="test", flask_env="testing", ...)
 
 Fields are organized by feature flag so each group can be independently enabled:
 - Core (always present): Flask, CORS, tasks, metrics, shutdown
@@ -32,6 +32,12 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Default secret key that must be changed in production
 _DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
+
+# Connection pool under FLASK_ENV=testing: the pytest apps and the Playwright
+# backends. They share the local PostgreSQL server (50 connections) with the
+# dev stack, so they stay far below the production default of 20 + 30.
+TEST_DB_POOL_SIZE = 2
+TEST_DB_POOL_MAX_OVERFLOW = 3
 
 
 class Environment(BaseSettings):
@@ -304,10 +310,6 @@ class Settings(BaseModel):
         """Check if running in production environment."""
         return self.flask_env == "production"
 
-    def set_engine_options_override(self, options: dict[str, Any]) -> None:
-        """Override SQLAlchemy engine options (used for testing with SQLite)."""
-        self.sqlalchemy_engine_options = options
-
     def to_flask_config(self) -> "FlaskConfig":
         """Create Flask configuration object from settings."""
         return FlaskConfig(
@@ -387,10 +389,24 @@ class Settings(BaseModel):
         else:
             oidc_cookie_secure = env.BASEURL.startswith("https://")
 
+        # Testing mode takes the small test pool, unless DB_POOL_SIZE or
+        # DB_POOL_MAX_OVERFLOW is set explicitly (each one on its own).
+        is_testing = env.FLASK_ENV == "testing"
+        db_pool_size = (
+            TEST_DB_POOL_SIZE
+            if is_testing and "DB_POOL_SIZE" not in env.model_fields_set
+            else env.DB_POOL_SIZE
+        )
+        db_pool_max_overflow = (
+            TEST_DB_POOL_MAX_OVERFLOW
+            if is_testing and "DB_POOL_MAX_OVERFLOW" not in env.model_fields_set
+            else env.DB_POOL_MAX_OVERFLOW
+        )
+
         # Build default SQLAlchemy engine options
         sqlalchemy_engine_options = {
-            "pool_size": env.DB_POOL_SIZE,
-            "max_overflow": env.DB_POOL_MAX_OVERFLOW,
+            "pool_size": db_pool_size,
+            "max_overflow": db_pool_max_overflow,
             "pool_timeout": env.DB_POOL_TIMEOUT,
             "pool_pre_ping": True,  # Verify connections before use
             "echo_pool": env.DB_POOL_ECHO,
@@ -410,8 +426,8 @@ class Settings(BaseModel):
             drain_auth_key=env.DRAIN_AUTH_KEY,
             # use_database
             database_url=env.DATABASE_URL,
-            db_pool_size=env.DB_POOL_SIZE,
-            db_pool_max_overflow=env.DB_POOL_MAX_OVERFLOW,
+            db_pool_size=db_pool_size,
+            db_pool_max_overflow=db_pool_max_overflow,
             db_pool_timeout=env.DB_POOL_TIMEOUT,
             db_pool_echo=env.DB_POOL_ECHO,
             diagnostics_enabled=env.DIAGNOSTICS_ENABLED,

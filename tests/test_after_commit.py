@@ -51,9 +51,14 @@ class TestAfterCommitUtility:
 
 
 class TestAfterCommitTeardown:
-    """The request teardown runs callbacks on commit and drops them on rollback."""
+    """The request teardown runs callbacks on commit and drops them on rollback.
 
-    def test_callback_runs_after_successful_request(self, app: Flask):
+    Each test adds routes, which only an app that has served no request yet
+    accepts, so they run on an app of their own.
+    """
+
+    def test_callback_runs_after_successful_request(self, committed_app: Flask):
+        app = committed_app
         calls: list[str] = []
 
         def view() -> str:
@@ -66,7 +71,8 @@ class TestAfterCommitTeardown:
         assert response.status_code == 200
         assert calls == ["committed"]
 
-    def test_callback_dropped_when_request_rolls_back(self, app: Flask):
+    def test_callback_dropped_when_request_rolls_back(self, committed_app: Flask):
+        app = committed_app
         calls: list[str] = []
 
         def view() -> str:

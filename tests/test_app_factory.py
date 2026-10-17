@@ -9,26 +9,14 @@ from app.config import Settings
 class TestAppFactory:
     """Test create_app() and its hook-based architecture."""
 
-    def test_create_app_returns_flask_instance(self):
+    def test_create_app_returns_flask_instance(self, test_settings: Settings):
         """Test that create_app returns a Flask app."""
-        settings = Settings(
-            flask_env="testing",
-            secret_key="test-key",
-            database_url="sqlite://",
-        )
-        settings.set_engine_options_override({})
-        app = create_app(settings=settings, skip_background_services=True)
+        app = create_app(settings=test_settings, skip_background_services=True)
         assert isinstance(app, Flask)
 
-    def test_create_app_has_container(self):
+    def test_create_app_has_container(self, test_settings: Settings):
         """Test that created app has a service container."""
-        settings = Settings(
-            flask_env="testing",
-            secret_key="test-key",
-            database_url="sqlite://",
-        )
-        settings.set_engine_options_override({})
-        app = create_app(settings=settings, skip_background_services=True)
+        app = create_app(settings=test_settings, skip_background_services=True)
         assert hasattr(app, "container")
 
     def test_health_blueprint_registered(self, client):

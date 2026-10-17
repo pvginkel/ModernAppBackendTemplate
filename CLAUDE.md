@@ -60,13 +60,21 @@ uv run pytest ../tests/ -v      # Mother project tests (infrastructure)
 uv run pytest tests/ -v          # Domain tests (Items CRUD)
 ```
 
-The mother suite needs two things from outside this repo:
+Both suites need PostgreSQL, and the mother suite needs two more things from outside this repo:
 
+- **PostgreSQL on `localhost:5432`** — the server the suites create their databases on, user and password `postgres`. The KubeCoder environment provides it as the `postgres` sidecar; `TEST_DATABASE_ADMIN_URL` points the suites elsewhere.
 - **S3 on `localhost:9000`** — `.env.test` points there with `s3storage` credentials. The KubeCoder environment provides it as the `s3storage` service, a RustFS sidecar (see the parent repo's `.kubecoder/config.yaml`).
 - **The SSE Gateway** — the `ssegateway` npm package, resolved from the frontend template's `test-app/node_modules` (`../frontend/test-app`). Run the frontend `regen.sh` once first, or set `SSE_GATEWAY_NODE_DIR` to any directory whose `node_modules` holds it.
 
-### 5. SQLite for Testing
-Tests use in-memory SQLite with the template cloning pattern (`sqlite3.Connection.backup()`).
+### 5. PostgreSQL for Testing
+The suites run on PostgreSQL; nothing in pytest uses SQLite. `template/tests/conftest_infrastructure.py.jinja` builds one template database per run with the Alembic revisions, in production's locale (ICU `und`, `C`), and clones it:
+
+- **Rollback tier (default):** a session-scoped `app` on `<run>_main`. Each test's `session` runs on savepoints inside a transaction that is rolled back at teardown; `container` and `client` hand that session to services and requests. `commit()` and `rollback()` are real, only `close()` is a no-op.
+- **`committed_app`:** an app on a clone of its own, with real commits, for anything a second connection must see.
+
+The autouse `session_app_isolation` gives each test the session app's DI wiring back and undoes provider overrides a test leaves behind. What services keep in memory lives for the run, so a test that changes such state must undo it (`monkeypatch` does).
+
+The mother suite runs on the same fixtures: `tests/conftest_infrastructure.py` is a symlink to `test-app/tests/conftest_infrastructure.py`, so it needs a regenerated `test-app/`, and `tests/conftest.py` adds only the SSE integration fixtures.
 
 ### 6. Minimize Jinja Usage
 - Prefer plain Python files with separate files per feature over Jinja conditionals

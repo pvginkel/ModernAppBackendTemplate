@@ -5,8 +5,8 @@ The Postgres sidecar starts empty, so a fresh clone has no database for
 `DATABASE_URL` to point at and `cli upgrade-db` fails before it can run a
 migration. This creates it (and nothing else) — schema is Alembic's job.
 
-Idempotent: an existing database is left untouched. Tests never call this;
-they run on SQLite.
+Idempotent: an existing database is left untouched. The test suites never
+call this: they create their own databases (tests/conftest_infrastructure.py).
 """
 
 from __future__ import annotations

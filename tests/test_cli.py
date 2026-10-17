@@ -11,7 +11,7 @@ from flask import Flask
 import app.cli as cli
 
 
-def _make_app(db_uri: str = "sqlite:///cli-test.db") -> Flask:
+def _make_app(db_uri: str = "postgresql+psycopg://localhost:5432/cli-test") -> Flask:
     """Create a minimal Flask app for CLI tests."""
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
@@ -34,7 +34,7 @@ class TestHandleLoadTestData:
         cli.handle_load_test_data(app=app, confirmed=True)
 
         output = capsys.readouterr().out
-        assert "sqlite:///cli-test.db" in output
+        assert "postgresql+psycopg://localhost:5432/cli-test" in output
         assert "Using database" in output
 
     def test_calls_load_test_data_hook(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,7 +136,7 @@ class TestHandleUpgradeDb:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The CLI should print the target database URI."""
-        app = _make_app("sqlite:///upgrade-test.db")
+        app = _make_app("postgresql+psycopg://localhost:5432/upgrade-test")
 
         monkeypatch.setattr(cli, "check_db_connection", lambda: True)
         monkeypatch.setattr(cli, "get_current_revision", lambda: None)
@@ -146,7 +146,7 @@ class TestHandleUpgradeDb:
         cli.handle_upgrade_db(app=app)
 
         output = capsys.readouterr().out
-        assert "sqlite:///upgrade-test.db" in output
+        assert "postgresql+psycopg://localhost:5432/upgrade-test" in output
         assert "Using database" in output
 
     def test_recreate_without_confirm_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:

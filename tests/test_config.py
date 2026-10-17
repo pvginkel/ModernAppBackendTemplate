@@ -2,8 +2,14 @@
 
 import pytest
 
-from app.config import Environment, Settings
+from app.config import (
+    TEST_DB_POOL_MAX_OVERFLOW,
+    TEST_DB_POOL_SIZE,
+    Environment,
+    Settings,
+)
 from app.exceptions import ConfigurationError
+from tests.conftest_infrastructure import _build_test_settings
 
 
 def test_environment_defaults(monkeypatch):
@@ -67,12 +73,12 @@ def test_settings_load_engine_options():
 def test_settings_direct_construction():
     """Test constructing Settings directly (for tests)."""
     settings = Settings(
-        database_url="sqlite://",
+        database_url="postgresql+psycopg://app:secret@db.example:5432/app",
         secret_key="test-key",
         flask_env="testing",
     )
 
-    assert settings.database_url == "sqlite://"
+    assert settings.database_url == "postgresql+psycopg://app:secret@db.example:5432/app"
     assert settings.secret_key == "test-key"
 
 
@@ -115,12 +121,12 @@ def test_settings_model_copy_update():
     """Test Settings.model_copy with update dict (test fixture pattern)."""
     base_settings = Settings.load()
     updated = base_settings.model_copy(update={
-        "database_url": "sqlite://",
-        "sqlalchemy_engine_options": {"poolclass": "StaticPool"},
+        "database_url": "postgresql+psycopg://app:secret@db.example:5432/app",
+        "sqlalchemy_engine_options": {"pool_size": 2},
     })
 
-    assert updated.database_url == "sqlite://"
-    assert updated.sqlalchemy_engine_options["poolclass"] == "StaticPool"
+    assert updated.database_url == "postgresql+psycopg://app:secret@db.example:5432/app"
+    assert updated.sqlalchemy_engine_options["pool_size"] == 2
 
 
 class TestValidateProductionConfig:
@@ -170,3 +176,76 @@ class TestValidateProductionConfig:
         """OIDC disabled should not require OIDC settings."""
         settings = Settings(oidc_enabled=False)
         settings.validate_production_config()
+
+
+class TestTestModePool:
+    """FLASK_ENV=testing takes the small test pool unless the pool is set."""
+
+    @pytest.fixture(autouse=True)
+    def _no_pool_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DB_POOL_SIZE", raising=False)
+        monkeypatch.delenv("DB_POOL_MAX_OVERFLOW", raising=False)
+
+    @staticmethod
+    def _pool(settings: Settings) -> tuple[int, int, int, int]:
+        options = settings.sqlalchemy_engine_options
+        return (
+            settings.db_pool_size,
+            settings.db_pool_max_overflow,
+            options["pool_size"],
+            options["max_overflow"],
+        )
+
+    def test_testing_takes_the_test_pool(self):
+        settings = Settings.load(Environment(FLASK_ENV="testing"))
+
+        assert self._pool(settings) == (
+            TEST_DB_POOL_SIZE,
+            TEST_DB_POOL_MAX_OVERFLOW,
+            TEST_DB_POOL_SIZE,
+            TEST_DB_POOL_MAX_OVERFLOW,
+        )
+
+    @pytest.mark.parametrize("flask_env", ["development", "production"])
+    def test_other_environments_keep_the_default_pool(self, flask_env: str):
+        settings = Settings.load(Environment(FLASK_ENV=flask_env))
+
+        assert self._pool(settings) == (20, 30, 20, 30)
+
+    def test_explicit_pool_size_wins_on_its_own(self):
+        settings = Settings.load(Environment(FLASK_ENV="testing", DB_POOL_SIZE=7))
+
+        assert self._pool(settings) == (7, TEST_DB_POOL_MAX_OVERFLOW, 7, TEST_DB_POOL_MAX_OVERFLOW)
+
+    def test_explicit_max_overflow_wins_on_its_own(self):
+        settings = Settings.load(Environment(FLASK_ENV="testing", DB_POOL_MAX_OVERFLOW=9))
+
+        assert self._pool(settings) == (TEST_DB_POOL_SIZE, 9, TEST_DB_POOL_SIZE, 9)
+
+    def test_pool_from_the_environment_counts_as_explicit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("FLASK_ENV", "testing")
+        monkeypatch.setenv("DB_POOL_SIZE", "4")
+
+        settings = Settings.load()
+
+        assert self._pool(settings) == (4, TEST_DB_POOL_MAX_OVERFLOW, 4, TEST_DB_POOL_MAX_OVERFLOW)
+
+    def test_explicit_default_value_still_wins(self):
+        """Setting the pool to the production default is a choice, not a default."""
+        settings = Settings.load(Environment(FLASK_ENV="testing", DB_POOL_SIZE=20))
+
+        assert self._pool(settings)[0] == 20
+
+    def test_pytest_settings_carry_the_whole_engine_options(self):
+        """A partial options dict would leave the engine on SQLAlchemy's own pool."""
+        options = _build_test_settings().sqlalchemy_engine_options
+
+        assert options == {
+            "pool_size": TEST_DB_POOL_SIZE,
+            "max_overflow": TEST_DB_POOL_MAX_OVERFLOW,
+            "pool_timeout": 10,
+            "pool_pre_ping": True,
+            "echo_pool": False,
+        }
