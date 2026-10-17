@@ -443,3 +443,65 @@ class TestOidcStartup:
             AuthService(settings)
 
         assert _jwks_refreshes("failed") - before == 1.0
+
+
+def _role_service(
+    read_role: str | None = None,
+    write_role: str | None = None,
+    admin_role: str | None = None,
+) -> AuthService:
+    """An AuthService with OIDC off and the given role tiers."""
+    config = MagicMock()
+    config.oidc_enabled = False
+    return AuthService(
+        config=config, read_role=read_role, write_role=write_role, admin_role=admin_role
+    )
+
+
+class TestResolveRequiredRole:
+    """resolve_required_role: the role a request needs, by method and decorator."""
+
+    def test_get_returns_read_role(self) -> None:
+        svc = _role_service(read_role="reader", write_role="editor")
+        assert svc.resolve_required_role("GET", None) == "reader"
+
+    def test_post_returns_write_role(self) -> None:
+        svc = _role_service(read_role="reader", write_role="editor")
+        assert svc.resolve_required_role("POST", None) == "editor"
+
+    def test_allow_roles_override(self) -> None:
+        from app.utils.auth import allow_roles
+
+        svc = _role_service(write_role="editor")
+
+        @allow_roles("special")
+        def view() -> None:
+            pass
+
+        assert svc.resolve_required_role("POST", view) == {"special"}
+
+    def test_safe_query_forces_read(self) -> None:
+        from app.utils.auth import safe_query
+
+        svc = _role_service(read_role="reader", write_role="editor")
+
+        @safe_query
+        def view() -> None:
+            pass
+
+        assert svc.resolve_required_role("POST", view) == "reader"
+
+    def test_write_falls_back_to_admin_role(self) -> None:
+        svc = _role_service(admin_role="admin")
+        assert svc.resolve_required_role("POST", None) == "admin"
+
+    def test_no_roles_means_no_gate(self) -> None:
+        svc = _role_service()
+        assert svc.resolve_required_role("GET", None) is None
+        assert svc.resolve_required_role("POST", None) is None
+
+    def test_head_is_a_read(self) -> None:
+        svc = _role_service(write_role="editor")
+        assert svc.resolve_required_role("HEAD", None) is None
+        svc = _role_service(read_role="reader", write_role="editor")
+        assert svc.resolve_required_role("HEAD", None) == "reader"

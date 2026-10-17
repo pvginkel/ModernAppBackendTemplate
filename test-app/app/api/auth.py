@@ -4,16 +4,12 @@ import logging
 from typing import Any
 
 from dependency_injector.wiring import Provide, inject
-from flask import Blueprint, make_response, redirect, request
+from flask import Blueprint, g, make_response, redirect, request
 from pydantic import BaseModel, Field
 from spectree import Response as SpectreeResponse
 
 from app.config import Settings
-from app.exceptions import (
-    AuthenticationException,
-    AuthorizationException,
-    ValidationException,
-)
+from app.exceptions import AuthenticationException, ValidationException
 from app.services.auth_service import AuthService
 from app.services.container import ServiceContainer
 from app.services.oidc_client_service import OidcClientService
@@ -23,6 +19,7 @@ from app.utils.auth import (
     get_auth_context,
     get_cookie_kwargs,
     get_token_expiry_seconds,
+    no_role_check,
     public,
     serialize_auth_state,
     validate_redirect_url,
@@ -48,24 +45,24 @@ class UserInfoResponseSchema(BaseModel):
 @api.validate(resp=SpectreeResponse(HTTP_200=UserInfoResponseSchema))
 @inject
 def get_current_user(
-    auth_service: AuthService = Provide[ServiceContainer.auth_service],
     testing_service: TestingService = Provide[ServiceContainer.testing_service],
     config: Settings = Provide[ServiceContainer.config],
 ) -> tuple[dict[str, Any], int]:
     """Get current authenticated user information.
 
-    This endpoint is @public because it handles authentication explicitly:
-    in testing mode it checks test sessions and forced errors; otherwise
-    it validates tokens or returns a default local-user when OIDC is off.
+    This endpoint is @public, so the request hook resolves the caller
+    (refreshing an expired access token) without answering 401 itself, and
+    the handler answers 401 when no one is signed in. A caller with none of
+    the app's roles gets 403 from the hook. With OIDC disabled, the caller
+    is the local admin.
 
     Returns:
-        200: User information from validated token or test session
+        200: User information
         401: No valid token provided or token invalid
-        403: User authenticated but has no recognized hierarchical role
+        403: User authenticated but has none of the app's roles
     """
-    # In testing mode, handle test sessions and forced errors
+    # In testing mode, a forced error comes first (single-shot)
     if config.is_testing:
-        # Check for forced errors first (single-shot)
         forced_error = testing_service.consume_forced_auth_error()
         if forced_error:
             logger.info("Returning forced auth error: status=%d", forced_error)
@@ -74,66 +71,10 @@ def get_current_user(
                 "message": "Simulated error for testing",
             }, forced_error
 
-        # Check for test sessions
-        token = request.cookies.get(config.oidc_cookie_name)
-        if token and token.startswith("test-session-"):
-            test_session = testing_service.get_session(token)
-            if test_session:
-                expanded_roles = auth_service.expand_roles(set(test_session.roles))
-
-                # If hierarchical roles are configured and user has none, reject
-                hierarchy = auth_service.hierarchy_roles
-                if hierarchy and not (expanded_roles & hierarchy):
-                    raise AuthorizationException("No recognized role -- access denied")
-
-                user_info = UserInfoResponseSchema(
-                    subject=test_session.subject,
-                    email=test_session.email,
-                    name=test_session.name,
-                    roles=sorted(expanded_roles),
-                )
-                logger.info(
-                    "Returned test session user info for subject=%s",
-                    test_session.subject,
-                )
-                return user_info.model_dump(), 200
-
-        # No test session — fall through to OIDC-enabled / disabled logic
-        # so existing tests without explicit sessions still get local-user.
-
-    # When OIDC is disabled, return a default "local" user
-    # Expand roles through hierarchy so the frontend sees the same shape
-    # as it would with OIDC enabled (e.g. admin -> [admin, editor, reader]).
-    if not config.oidc_enabled:
-        local_roles = auth_service.expand_roles({"admin"})
-        return UserInfoResponseSchema(
-            subject="local-user",
-            email="admin@local",
-            name="Local Admin",
-            roles=sorted(local_roles),
-        ).model_dump(), 200
-
-    # OIDC enabled: try auth_context (set by before_request hook).
-    # Since this endpoint is @public, the hook skips it, so we fall back
-    # to manually extracting and validating the token from the request.
     auth_context = get_auth_context()
-    if not auth_context:
-        from app.utils.auth import extract_token_from_request
+    if auth_context is None:
+        raise AuthenticationException("No valid token provided")
 
-        token = extract_token_from_request(config)
-        if not token:
-            raise AuthenticationException("No valid token provided")
-
-        auth_context = auth_service.validate_token(token)
-
-    # If hierarchical roles are configured and user has none, reject.
-    # This lets the frontend distinguish "not logged in" (401) from
-    # "logged in but no access" (403) and show an appropriate screen.
-    hierarchy = auth_service.hierarchy_roles
-    if hierarchy and not (auth_context.roles & hierarchy):
-        raise AuthorizationException("No recognized role -- access denied")
-
-    # Return user information
     user_info = UserInfoResponseSchema(
         subject=auth_context.subject,
         email=auth_context.email,
@@ -152,6 +93,7 @@ def get_current_user(
 
 @auth_bp.route("/login", methods=["GET"])
 @public
+@no_role_check
 @inject
 def login(
     oidc_client_service: OidcClientService = Provide[ServiceContainer.oidc_client_service],
@@ -199,6 +141,7 @@ def login(
 
 @auth_bp.route("/callback", methods=["GET"])
 @public
+@no_role_check
 @inject
 def callback(
     oidc_client_service: OidcClientService = Provide[ServiceContainer.oidc_client_service],
@@ -295,6 +238,7 @@ def callback(
 
 @auth_bp.route("/logout", methods=["GET"])
 @public
+@no_role_check
 @inject
 def logout(
     oidc_client_service: OidcClientService = Provide[ServiceContainer.oidc_client_service],
@@ -311,6 +255,11 @@ def logout(
     Returns:
         302: Redirect to OIDC logout endpoint (or direct redirect if OIDC disabled)
     """
+    # The after_request hook clears the auth cookies. Set before anything
+    # else, so that a token refresh the request hook just made cannot put
+    # fresh cookies back on the response.
+    g.clear_auth_cookies = True
+
     # Get redirect parameter (default to /)
     redirect_url = request.args.get("redirect", "/")
 
@@ -363,12 +312,4 @@ def logout(
         final_redirect_url = redirect_url
         logger.info("User logged out: redirecting to %s", redirect_url)
 
-    # Create response with redirect
-    response = make_response(redirect(final_redirect_url))
-
-    # Clear auth cookies
-    cookie_kw = get_cookie_kwargs(config)
-    for name in (config.oidc_cookie_name, config.oidc_refresh_cookie_name, "id_token"):
-        response.set_cookie(name, "", max_age=0, **cookie_kw)
-
-    return response
+    return make_response(redirect(final_redirect_url))

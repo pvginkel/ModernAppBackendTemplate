@@ -245,3 +245,86 @@ class TestTokenRefreshMiddleware:
 
             assert response.status_code == 200
             mock_post.assert_not_called()
+
+
+class TestRoleGateMiddleware:
+    """The hook's mode per endpoint, and the 403 for a caller with no role (D2).
+
+    Runs on ``roles_oidc_app``: ``write_role="editor"``, ``pipeline`` as an
+    additional role, and no read_role.
+    """
+
+    def test_non_public_without_cookies_returns_401(self, roles_oidc_client: Any):
+        response = roles_oidc_client.get("/api/items")
+
+        assert response.status_code == 401
+        assert response.get_json() == {"error": "No valid token provided"}
+
+    def test_get_with_no_recognized_role_returns_403(
+        self, roles_oidc_client: Any, generate_test_jwt: Any
+    ):
+        token = generate_test_jwt(subject="outsider", roles=["default-roles-homelab"])
+        roles_oidc_client.set_cookie("access_token", token)
+
+        response = roles_oidc_client.get("/api/items")
+
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "No recognized role -- access denied"}
+
+    def test_get_with_configured_role_succeeds(
+        self, roles_oidc_client: Any, generate_test_jwt: Any
+    ):
+        token = generate_test_jwt(roles=["editor"])
+        roles_oidc_client.set_cookie("access_token", token)
+
+        response = roles_oidc_client.get("/api/items")
+
+        assert response.status_code == 200
+
+    def test_additional_role_reads_but_does_not_write(
+        self, roles_oidc_client: Any, generate_test_jwt: Any
+    ):
+        token = generate_test_jwt(subject="ci", roles=["pipeline"])
+        headers = {"Authorization": f"Bearer {token}"}
+
+        assert roles_oidc_client.get("/api/items", headers=headers).status_code == 200
+
+        response = roles_oidc_client.post("/api/items", json={"name": "x"}, headers=headers)
+        assert response.status_code == 403
+        assert "Insufficient permissions" in response.get_json()["error"]
+
+    def test_public_endpoint_without_cookies_reaches_handler(self, roles_oidc_client: Any):
+        response = roles_oidc_client.get("/api/auth/login?redirect=/")
+
+        assert response.status_code == 302
+        assert response.headers["Location"].startswith(
+            "https://auth.example.com/realms/test/protocol/openid-connect/auth"
+        )
+
+    def test_public_endpoint_with_no_recognized_role_returns_403(
+        self, roles_oidc_client: Any, generate_test_jwt: Any
+    ):
+        """A signed-in caller on a @public endpoint is still role-checked."""
+        token = generate_test_jwt(subject="outsider", roles=["default-roles-homelab"])
+        roles_oidc_client.set_cookie("access_token", token)
+
+        response = roles_oidc_client.get("/api/auth/self")
+
+        assert response.status_code == 403
+
+    def test_public_endpoint_ignores_bearer_token(
+        self, roles_oidc_client: Any, generate_test_jwt: Any
+    ):
+        """A @public endpoint's bearer token is its own business, not the hook's.
+
+        A device or client token with none of the app's roles would otherwise
+        get 403 from the hook before the endpoint could check it.
+        """
+        token = generate_test_jwt(subject="device", roles=["default-roles-homelab"])
+
+        response = roles_oidc_client.get(
+            "/api/auth/self", headers={"Authorization": f"Bearer {token}"}
+        )
+
+        # Not 403: the hook saw no one, and /self answers 401 for no one
+        assert response.status_code == 401

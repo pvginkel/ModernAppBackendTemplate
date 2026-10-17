@@ -16,6 +16,7 @@ from app.utils.auth import (
     deserialize_auth_state,
     get_cookie_kwargs,
     get_token_expiry_seconds,
+    no_role_check,
     public,
     serialize_auth_state,
     validate_redirect_url,
@@ -320,6 +321,106 @@ class TestCheckAuthorization:
         error_msg = str(exc_info.value)
         assert "admin" in error_msg
         assert "editor" in error_msg
+
+
+class TestNoRecognizedRole:
+    """A caller holding none of the configured roles gets 403 on every endpoint (D2)."""
+
+    @staticmethod
+    def _write_gated_service(*additional_roles: str) -> AuthService:
+        """write_role set, read_role unset: GETs have no role gate."""
+        config = MagicMock()
+        config.oidc_enabled = False
+        return AuthService(
+            config=config,
+            write_role="editor",
+            additional_roles=list(additional_roles) if additional_roles else None,
+        )
+
+    def test_get_without_read_role_denies_caller_with_no_role(self):
+        auth_service = self._write_gated_service()
+        assert auth_service.resolve_required_role("GET", None) is None
+
+        auth_context = AuthContext(
+            subject="outsider", email=None, name=None, roles={"default-roles-homelab"}
+        )
+
+        with pytest.raises(AuthorizationException, match="No recognized role"):
+            check_authorization(auth_context, auth_service, "GET", view_func=None)
+
+    def test_get_without_read_role_denies_caller_with_empty_roles(self):
+        auth_service = self._write_gated_service()
+        auth_context = AuthContext(subject="outsider", email=None, name=None, roles=set())
+
+        with pytest.raises(AuthorizationException, match="No recognized role"):
+            check_authorization(auth_context, auth_service, "GET", view_func=None)
+
+    def test_get_without_read_role_allows_configured_role(self):
+        auth_service = self._write_gated_service()
+        auth_context = AuthContext(subject="editor", email=None, name=None, roles={"editor"})
+
+        check_authorization(auth_context, auth_service, "GET", view_func=None)
+
+    def test_additional_role_counts_as_recognized(self):
+        auth_service = self._write_gated_service("pipeline")
+        auth_context = AuthContext(subject="ci", email=None, name=None, roles={"pipeline"})
+
+        check_authorization(auth_context, auth_service, "GET", view_func=None)
+
+        with pytest.raises(AuthorizationException, match="Insufficient permissions"):
+            check_authorization(auth_context, auth_service, "POST", view_func=None)
+
+    def test_no_recognized_role_wins_over_allow_roles_message(self):
+        auth_service = self._write_gated_service("viewer")
+
+        @allow_roles("viewer")
+        def viewer_endpoint():
+            pass
+
+        auth_context = AuthContext(subject="outsider", email=None, name=None, roles={"other"})
+
+        with pytest.raises(AuthorizationException, match="No recognized role"):
+            check_authorization(auth_context, auth_service, "GET", view_func=viewer_endpoint)
+
+
+class TestNoRoleCheck:
+    """@no_role_check skips every role check."""
+
+    def test_sets_attribute_and_returns_function(self):
+        def endpoint():
+            return "ok"
+
+        decorated = no_role_check(endpoint)
+
+        assert decorated is endpoint
+        assert endpoint.is_no_role_check is True  # type: ignore[attr-defined]
+        assert decorated() == "ok"
+
+    def test_caller_with_no_role_passes(self):
+        config = MagicMock()
+        config.oidc_enabled = False
+        auth_service = AuthService(config=config, read_role="reader", write_role="editor")
+
+        @no_role_check
+        def logout():
+            pass
+
+        auth_context = AuthContext(subject="outsider", email=None, name=None, roles=set())
+
+        check_authorization(auth_context, auth_service, "GET", view_func=logout)
+        check_authorization(auth_context, auth_service, "POST", view_func=logout)
+
+    def test_skips_allow_roles(self):
+        auth_service = _make_auth_service("admin")
+
+        @no_role_check
+        @allow_roles("admin")
+        def endpoint():
+            pass
+
+        auth_context = AuthContext(subject="user", email=None, name=None, roles={"viewer"})
+
+        check_authorization(auth_context, auth_service, "GET", view_func=endpoint)
 
 
 class TestSerializeDeserializeAuthState:
