@@ -17,6 +17,10 @@ from app.services.oidc_client_service import (
     TokenResponse,
 )
 
+# The origin a login came in on; differs from the settings' BASEURL, so a
+# redirect_uri built from BASEURL would fail the asserts.
+ORIGIN = "https://app.example.com:8443"
+
 
 def _oidc_settings(base: Settings) -> Settings:
     """Create settings with OIDC enabled and all required fields populated."""
@@ -231,7 +235,7 @@ class TestPkceChallenge:
         assert challenge_a != challenge_b
 
 
-class TestGenerateAuthorizationUrl:
+class TestBuildAuthorizationUrl:
     """Tests for OIDC authorization URL generation."""
 
     @pytest.fixture
@@ -239,31 +243,43 @@ class TestGenerateAuthorizationUrl:
         """Create an OidcClientService with OIDC enabled."""
         return _build_service(_oidc_settings(test_settings))
 
+    def _build(
+        self, service: OidcClientService, redirect_url: str = "/dashboard"
+    ) -> tuple[str, AuthState]:
+        auth_state = service.create_auth_state(redirect_url, ORIGIN)
+        return service.build_authorization_url(auth_state, "the-state", ORIGIN), auth_state
+
     def test_authorization_url_contains_required_params(
         self, service: OidcClientService
     ) -> None:
         """Test that the generated authorization URL contains all required OAuth2/PKCE parameters."""
-        url, auth_state = service.generate_authorization_url(
-            "http://localhost:3000/dashboard"
-        )
+        url, _ = self._build(service)
 
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
 
         assert params["client_id"] == ["test-backend"]
         assert params["response_type"] == ["code"]
-        assert params["redirect_uri"] == ["http://localhost:3000/api/auth/callback"]
         assert params["scope"] == ["openid profile email"]
         assert params["code_challenge_method"] == ["S256"]
 
         assert "code_challenge" in params
         assert len(params["code_challenge"][0]) > 0
 
-        assert params["state"] == [auth_state.nonce]
+        assert params["state"] == ["the-state"]
+
+    def test_redirect_uri_is_the_origins_callback(
+        self, service: OidcClientService
+    ) -> None:
+        """The redirect_uri comes from the given origin, not BASEURL."""
+        url, _ = self._build(service)
+
+        params = parse_qs(urlparse(url).query)
+        assert params["redirect_uri"] == [f"{ORIGIN}/api/auth/callback"]
 
     def test_authorization_url_base(self, service: OidcClientService) -> None:
         """Test that the authorization URL uses the discovered authorization endpoint."""
-        url, _ = service.generate_authorization_url("http://localhost:3000/")
+        url, _ = self._build(service)
 
         parsed = urlparse(url)
         base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
@@ -275,25 +291,25 @@ class TestGenerateAuthorizationUrl:
     def test_auth_state_contains_pkce_verifier(
         self, service: OidcClientService
     ) -> None:
-        """Test that the returned AuthState contains the PKCE code verifier."""
-        _, auth_state = service.generate_authorization_url("http://localhost:3000/")
+        """Test that the AuthState contains the PKCE code verifier."""
+        _, auth_state = self._build(service)
 
         assert isinstance(auth_state, AuthState)
         assert len(auth_state.code_verifier) > 0
 
-    def test_auth_state_contains_redirect_url(
+    def test_auth_state_contains_redirect_url_and_origin(
         self, service: OidcClientService
     ) -> None:
-        """Test that the returned AuthState preserves the original redirect URL."""
-        redirect = "http://localhost:3000/items/ABCD"
-        _, auth_state = service.generate_authorization_url(redirect)
+        """Test that the AuthState keeps the redirect path and the origin."""
+        _, auth_state = self._build(service, "/items/ABCD")
 
-        assert auth_state.redirect_url == redirect
+        assert auth_state.redirect_url == "/items/ABCD"
+        assert auth_state.origin == ORIGIN
 
     def test_auth_state_nonce_is_random(self, service: OidcClientService) -> None:
         """Test that each authorization request produces a unique nonce."""
-        _, state_1 = service.generate_authorization_url("http://localhost:3000/")
-        _, state_2 = service.generate_authorization_url("http://localhost:3000/")
+        state_1 = service.create_auth_state("/", ORIGIN)
+        state_2 = service.create_auth_state("/", ORIGIN)
 
         assert state_1.nonce != state_2.nonce
 
@@ -301,7 +317,7 @@ class TestGenerateAuthorizationUrl:
         self, service: OidcClientService
     ) -> None:
         """Test that the code_challenge in the URL matches S256(code_verifier) from AuthState."""
-        url, auth_state = service.generate_authorization_url("http://localhost:3000/")
+        url, auth_state = self._build(service)
 
         params = parse_qs(urlparse(url).query)
         url_challenge = params["code_challenge"][0]
@@ -335,7 +351,7 @@ class TestExchangeCodeForTokens:
             mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
 
-            result = service.exchange_code_for_tokens("auth-code-123", "pkce-verifier")
+            result = service.exchange_code_for_tokens("auth-code-123", "pkce-verifier", ORIGIN)
 
         assert isinstance(result, TokenResponse)
         assert result.access_token == "eyJ-access-token"
@@ -358,7 +374,7 @@ class TestExchangeCodeForTokens:
             mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
 
-            service.exchange_code_for_tokens("the-auth-code", "the-verifier")
+            service.exchange_code_for_tokens("the-auth-code", "the-verifier", ORIGIN)
 
         mock_post.assert_called_once()
         call_args = mock_post.call_args
@@ -371,7 +387,7 @@ class TestExchangeCodeForTokens:
         posted_data = call_args.kwargs["data"]
         assert posted_data["grant_type"] == "authorization_code"
         assert posted_data["code"] == "the-auth-code"
-        assert posted_data["redirect_uri"] == "http://localhost:3000/api/auth/callback"
+        assert posted_data["redirect_uri"] == f"{ORIGIN}/api/auth/callback"
         assert posted_data["client_id"] == "test-backend"
         assert posted_data["client_secret"] == "test-client-secret"
         assert posted_data["code_verifier"] == "the-verifier"
@@ -399,7 +415,7 @@ class TestExchangeCodeForTokens:
             mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
 
-            service.exchange_code_for_tokens("code", "verifier")
+            service.exchange_code_for_tokens("code", "verifier", ORIGIN)
 
         after = OIDC_TOKEN_EXCHANGE_TOTAL.labels(status="success")._value.get()
         assert after - before == 1.0
@@ -420,7 +436,7 @@ class TestExchangeCodeForTokens:
             mock_post.return_value = mock_response
 
             with pytest.raises(AuthenticationException, match="missing access_token"):
-                service.exchange_code_for_tokens("code", "verifier")
+                service.exchange_code_for_tokens("code", "verifier", ORIGIN)
 
     def test_exchange_http_error_raises_authentication_exception(
         self, service: OidcClientService
@@ -445,7 +461,7 @@ class TestExchangeCodeForTokens:
                 AuthenticationException,
                 match="Failed to exchange authorization code",
             ):
-                service.exchange_code_for_tokens("expired-code", "verifier")
+                service.exchange_code_for_tokens("expired-code", "verifier", ORIGIN)
 
     def test_exchange_defaults_token_type_and_expires(
         self, service: OidcClientService
@@ -461,7 +477,7 @@ class TestExchangeCodeForTokens:
             mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
 
-            result = service.exchange_code_for_tokens("code", "verifier")
+            result = service.exchange_code_for_tokens("code", "verifier", ORIGIN)
 
         assert result.token_type == "Bearer"
         assert result.expires_in == 300
@@ -482,7 +498,7 @@ class TestExchangeCodeForTokens:
             mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
 
-            result = service.exchange_code_for_tokens("code", "verifier")
+            result = service.exchange_code_for_tokens("code", "verifier", ORIGIN)
 
         assert result.id_token is None
         assert result.refresh_token is None

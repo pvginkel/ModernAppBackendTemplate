@@ -3,13 +3,15 @@
 import time
 from typing import Any
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import jwt
+import pytest
 from flask import Flask
 
 from app.exceptions import AuthenticationException
 from app.services.oidc_client_service import AuthState, TokenResponse
-from app.utils.auth import serialize_auth_state
+from app.utils.auth import deserialize_auth_state, serialize_auth_state
 
 AUTH_COOKIES = ("access_token", "refresh_token", "id_token")
 LOGOUT_URL = "https://auth.example.com/realms/test/protocol/openid-connect/logout"
@@ -347,3 +349,135 @@ class TestAuthFlowWithoutRole:
         set_cookie = " ".join(response.headers.getlist("Set-Cookie"))
         assert fresh.access_token not in set_cookie
         assert str(fresh.refresh_token) not in set_cookie
+
+
+def _redirect_params(response: Any) -> dict[str, list[str]]:
+    assert response.status_code == 302
+    return parse_qs(urlparse(response.headers["Location"]).query)
+
+
+def _callback(app: Flask, generate_test_jwt: Any, auth_state: AuthState) -> Any:
+    """Run a callback for auth_state; return the mocked token exchange."""
+    state = serialize_auth_state(auth_state, app.container.config().secret_key)
+    tokens = TokenResponse(
+        access_token=generate_test_jwt(),
+        id_token=None,
+        refresh_token=None,
+        token_type="Bearer",
+        expires_in=300,
+    )
+
+    with patch.object(
+        app.container.oidc_client_service(),
+        "exchange_code_for_tokens",
+        return_value=tokens,
+    ) as exchange:
+        response = app.test_client().get(
+            "/api/auth/callback", query_string={"code": "the-code", "state": state}
+        )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == auth_state.redirect_url
+    return exchange
+
+
+class TestRedirectOrigin:
+    """The OIDC redirect URIs come from the request's origin, not BASEURL.
+
+    The oidc_app's BASEURL is http://localhost:3000; the test client's
+    origin is http://localhost.
+    """
+
+    def test_login_redirect_uri_from_request_host(self, oidc_client: Any):
+        params = _redirect_params(oidc_client.get("/api/auth/login?redirect=/dashboard"))
+
+        assert params["redirect_uri"] == ["http://localhost/api/auth/callback"]
+
+    def test_login_keeps_a_non_default_port(self, oidc_client: Any):
+        response = oidc_client.get(
+            "/api/auth/login?redirect=/", base_url="http://app.example.com:8443"
+        )
+
+        params = _redirect_params(response)
+        assert params["redirect_uri"] == ["http://app.example.com:8443/api/auth/callback"]
+
+    def test_login_behind_a_proxy_uses_forwarded_headers(self, oidc_client: Any):
+        """ProxyFix trusts one hop's X-Forwarded-Proto and X-Forwarded-Host."""
+        response = oidc_client.get(
+            "/api/auth/login?redirect=/",
+            headers={
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-Host": "app.example.com",
+            },
+        )
+
+        params = _redirect_params(response)
+        assert params["redirect_uri"] == ["https://app.example.com/api/auth/callback"]
+
+    def test_login_stores_origin_in_state(self, oidc_app: Flask, oidc_client: Any):
+        response = oidc_client.get(
+            "/api/auth/login?redirect=/items?filter=1",
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "app.example.com"},
+        )
+
+        state = _redirect_params(response)["state"][0]
+        auth_state = deserialize_auth_state(state, oidc_app.container.config().secret_key)
+        assert auth_state.origin == "https://app.example.com"
+        assert auth_state.redirect_url == "/items?filter=1"
+
+    @pytest.mark.parametrize(
+        "redirect_url",
+        ["http://localhost/dashboard", "//evil.com", "/\\evil.com", "dashboard"],
+    )
+    def test_login_rejects_anything_but_a_path(self, oidc_client: Any, redirect_url: str):
+        response = oidc_client.get("/api/auth/login", query_string={"redirect": redirect_url})
+
+        assert response.status_code == 400
+
+    def test_callback_uses_origin_from_state(self, oidc_app: Flask, generate_test_jwt: Any):
+        auth_state = AuthState(
+            code_verifier="verifier",
+            redirect_url="/dashboard",
+            nonce="nonce",
+            origin="https://other.example.com",
+        )
+
+        exchange = _callback(oidc_app, generate_test_jwt, auth_state)
+
+        exchange.assert_called_once_with("the-code", "verifier", "https://other.example.com")
+
+    def test_callback_without_origin_in_state_uses_baseurl(
+        self, oidc_app: Flask, generate_test_jwt: Any
+    ):
+        """A state made before origins were stored was built on BASEURL."""
+        auth_state = AuthState(code_verifier="verifier", redirect_url="/", nonce="nonce")
+
+        exchange = _callback(oidc_app, generate_test_jwt, auth_state)
+
+        exchange.assert_called_once_with("the-code", "verifier", "http://localhost:3000")
+
+    def test_logout_post_logout_redirect_uri_from_request_origin(self, oidc_client: Any):
+        response = oidc_client.get(
+            "/api/auth/logout?redirect=/goodbye",
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "app.example.com"},
+        )
+
+        params = _redirect_params(response)
+        assert params["post_logout_redirect_uri"] == ["https://app.example.com/goodbye"]
+
+    def test_logout_default_redirect_is_root(self, oidc_client: Any):
+        params = _redirect_params(oidc_client.get("/api/auth/logout"))
+
+        assert params["post_logout_redirect_uri"] == ["http://localhost/"]
+
+    @pytest.mark.parametrize("redirect_url", ["https://evil.com/steal", "//evil.com"])
+    def test_logout_rejects_anything_but_a_path(self, oidc_client: Any, redirect_url: str):
+        response = oidc_client.get("/api/auth/logout", query_string={"redirect": redirect_url})
+
+        assert response.status_code == 400
+
+    def test_logout_with_oidc_disabled_redirects_to_the_path(self, client: Any):
+        response = client.get("/api/auth/logout?redirect=/goodbye")
+
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/goodbye"

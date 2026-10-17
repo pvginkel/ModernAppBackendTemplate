@@ -18,6 +18,7 @@ from app.utils.auth import (
     deserialize_auth_state,
     get_auth_context,
     get_cookie_kwargs,
+    get_request_origin,
     get_token_expiry_seconds,
     no_role_check,
     public,
@@ -102,10 +103,13 @@ def login(
     """Initiate OIDC login flow with PKCE.
 
     Generates authorization URL and redirects to OIDC provider.
-    PKCE state is encrypted into the OAuth state parameter.
+    PKCE state is encrypted into the OAuth state parameter. The
+    ``redirect_uri`` is the callback on the origin the request came in on,
+    so the app signs in on every hostname it is served on (each one
+    registered at the IdP).
 
     Query Parameters:
-        redirect: URL to redirect to after successful login (required)
+        redirect: Path to redirect to after successful login (required)
 
     Returns:
         302: Redirect to OIDC provider authorization endpoint
@@ -120,21 +124,24 @@ def login(
     if not redirect_url:
         raise ValidationException("Missing required 'redirect' parameter")
 
-    # Validate redirect URL to prevent open redirect attacks
-    validate_redirect_url(redirect_url, config.baseurl)
+    # Only a path on this origin, to prevent open redirects
+    validate_redirect_url(redirect_url)
+
+    origin = get_request_origin()
 
     # Generate authorization URL with PKCE.
-    # The auth state (containing the PKCE code_verifier, redirect URL, and
-    # nonce) is encrypted and carried as the OAuth ``state`` parameter instead
-    # of being stored in a cookie.  This avoids third-party cookie blocking
-    # when the app runs inside a cross-origin iframe (e.g. Home Assistant).
-    auth_state = oidc_client_service.create_auth_state(redirect_url)
+    # The auth state (containing the PKCE code_verifier, redirect URL, nonce
+    # and origin) is encrypted and carried as the OAuth ``state`` parameter
+    # instead of being stored in a cookie.  This avoids third-party cookie
+    # blocking when the app runs inside a cross-origin iframe (e.g. Home
+    # Assistant).
+    auth_state = oidc_client_service.create_auth_state(redirect_url, origin)
     encrypted_state = serialize_auth_state(auth_state, config.secret_key)
     authorization_url = oidc_client_service.build_authorization_url(
-        auth_state, encrypted_state
+        auth_state, encrypted_state, origin
     )
 
-    logger.info("Login initiated: redirecting to OIDC provider")
+    logger.info("Login initiated: origin=%s, redirecting to OIDC provider", origin)
 
     return redirect(authorization_url)
 
@@ -175,13 +182,18 @@ def callback(
         raise ValidationException("Missing 'state' parameter in callback")
 
     # The ``state`` parameter carries the encrypted auth state (code_verifier,
-    # redirect URL, nonce).  Decrypt and verify it.  This replaces the former
-    # cookie-based approach which failed inside cross-origin iframes.
+    # redirect URL, nonce, origin).  Decrypt and verify it.  This replaces the
+    # former cookie-based approach which failed inside cross-origin iframes.
     auth_state = deserialize_auth_state(state, config.secret_key)
+
+    # The token request's redirect_uri must equal the authorization
+    # request's, so it comes from the origin login stored. A state without
+    # one was made before origins were stored, when BASEURL was the origin.
+    origin = auth_state.origin or config.baseurl
 
     # Exchange authorization code for tokens
     token_response = oidc_client_service.exchange_code_for_tokens(
-        code, auth_state.code_verifier
+        code, auth_state.code_verifier, origin
     )
 
     # Validate access token
@@ -250,10 +262,11 @@ def logout(
     to terminate the session at the IdP level.
 
     Query Parameters:
-        redirect: URL to redirect to after logout (default: /)
+        redirect: Path to redirect to after logout (default: /)
 
     Returns:
         302: Redirect to OIDC logout endpoint (or direct redirect if OIDC disabled)
+        400: Invalid redirect parameter
     """
     # The after_request hook clears the auth cookies. Set before anything
     # else, so that a token refresh the request hook just made cannot put
@@ -263,17 +276,15 @@ def logout(
     # Get redirect parameter (default to /)
     redirect_url = request.args.get("redirect", "/")
 
-    # Validate redirect URL to prevent open redirect attacks
-    validate_redirect_url(redirect_url, config.baseurl)
+    # Only a path on this origin, to prevent open redirects
+    validate_redirect_url(redirect_url)
 
     # Get ID token for logout hint (to skip confirmation prompt)
     id_token = request.cookies.get("id_token")
 
-    # Build the post-logout redirect URI (must be absolute for OIDC)
-    if redirect_url.startswith("/"):
-        post_logout_redirect_uri = f"{config.baseurl}{redirect_url}"
-    else:
-        post_logout_redirect_uri = redirect_url
+    # The post-logout redirect URI must be absolute: the path on the origin
+    # the request came in on
+    post_logout_redirect_uri = f"{get_request_origin()}{redirect_url}"
 
     # Determine where to redirect
     if config.oidc_enabled:

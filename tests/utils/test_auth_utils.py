@@ -440,6 +440,41 @@ class TestSerializeDeserializeAuthState:
         assert recovered.code_verifier == state.code_verifier
         assert recovered.redirect_url == state.redirect_url
         assert recovered.nonce == state.nonce
+        assert recovered.origin is None
+
+    def test_origin_roundtrips(self):
+        """The origin login stored comes back for the callback."""
+        state = AuthState(
+            code_verifier="test-verifier",
+            redirect_url="/dashboard",
+            nonce="test-nonce",
+            origin="https://app.example.com:8443",
+        )
+
+        recovered = deserialize_auth_state(
+            serialize_auth_state(state, "test-secret-key"), "test-secret-key"
+        )
+
+        assert recovered.origin == "https://app.example.com:8443"
+
+    def test_state_without_origin_key_reads_as_none(self):
+        """A state made before origins were stored still deserializes."""
+        import json
+
+        from cryptography.fernet import Fernet
+
+        from app.utils.auth import _derive_fernet_key
+
+        legacy = Fernet(_derive_fernet_key("test-secret-key")).encrypt(
+            json.dumps(
+                {"code_verifier": "v", "redirect_url": "/", "nonce": "n"}
+            ).encode()
+        ).decode("ascii")
+
+        recovered = deserialize_auth_state(legacy, "test-secret-key")
+
+        assert recovered.origin is None
+        assert recovered.redirect_url == "/"
 
     def test_wrong_secret_raises_validation_exception(self):
         """Test that deserialization with wrong key fails."""
@@ -506,37 +541,41 @@ class TestGetCookieKwargs:
 
 
 class TestValidateRedirectUrl:
-    """Test suite for validate_redirect_url."""
+    """validate_redirect_url accepts only a path on the app's own origin."""
 
-    def test_relative_url_allowed(self):
-        """Test that relative URLs are allowed."""
-        validate_redirect_url("/dashboard", "http://localhost:3000")
+    @pytest.mark.parametrize(
+        "redirect_url",
+        ["/", "/dashboard", "/some/deep/path?query=1", "/items?filter=a%2F%2Fb#top"],
+    )
+    def test_path_allowed(self, redirect_url: str):
+        validate_redirect_url(redirect_url)
 
-    def test_relative_url_with_path_allowed(self):
-        """Test that relative URLs with path are allowed."""
-        validate_redirect_url("/some/deep/path?query=1", "http://localhost:3000")
-
-    def test_same_origin_url_allowed(self):
-        """Test that URLs with same origin as base URL are allowed."""
-        validate_redirect_url(
-            "http://localhost:3000/dashboard", "http://localhost:3000"
-        )
-
-    def test_external_url_rejected(self):
-        """Test that external URLs are rejected."""
-        with pytest.raises(ValidationException, match="external"):
-            validate_redirect_url("https://evil.com/steal", "http://localhost:3000")
-
-    def test_different_scheme_rejected(self):
-        """Test that different scheme is rejected."""
-        with pytest.raises(ValidationException, match="external"):
-            validate_redirect_url(
-                "https://localhost:3000/dashboard", "http://localhost:3000"
-            )
-
-    def test_different_host_rejected(self):
-        """Test that different host is rejected."""
-        with pytest.raises(ValidationException, match="external"):
-            validate_redirect_url(
-                "http://malicious.com/page", "http://localhost:3000"
-            )
+    @pytest.mark.parametrize(
+        "redirect_url",
+        [
+            "https://evil.com/steal",
+            # Absolute URLs are refused even on the app's own origin
+            "http://localhost:3000/dashboard",
+            # Protocol-relative: a host without a scheme
+            "//evil.com",
+            "//evil.com/path",
+            "///evil.com",
+            # Browsers read backslashes as slashes
+            "/\\evil.com",
+            "\\\\evil.com",
+            "/path\\with-backslash",
+            # Browsers drop tabs and newlines, which would leave //evil.com
+            "/\t/evil.com",
+            "/\n/evil.com",
+            "/\r/evil.com",
+            "/path\x7f",
+            # No leading slash: would resolve against /api/auth/
+            "dashboard",
+            ".evil.com",
+            "javascript:alert(1)",
+            "",
+        ],
+    )
+    def test_anything_else_rejected(self, redirect_url: str):
+        with pytest.raises(ValidationException, match="must be a path on this site"):
+            validate_redirect_url(redirect_url)

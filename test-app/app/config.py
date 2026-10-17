@@ -235,7 +235,7 @@ class Environment(BaseSettings):
 
     BASEURL: str = Field(
         default="http://localhost:3000",
-        description="Base URL for the application (used for redirect URI and cookie security)"
+        description="Base URL for the application (infers OIDC_COOKIE_SECURE; the OIDC redirect URIs come from the request origin)"
     )
     OIDC_ENABLED: bool = Field(
         default=False,

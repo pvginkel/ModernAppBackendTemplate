@@ -5,7 +5,6 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
 
 import jwt
 from cryptography.fernet import Fernet, InvalidToken
@@ -495,6 +494,7 @@ def serialize_auth_state(auth_state: AuthState, secret_key: str) -> str:
         "code_verifier": auth_state.code_verifier,
         "redirect_url": auth_state.redirect_url,
         "nonce": auth_state.nonce,
+        "origin": auth_state.origin,
     }).encode()
     return fernet.encrypt(data).decode("ascii")
 
@@ -523,6 +523,7 @@ def deserialize_auth_state(encrypted_data: str, secret_key: str, max_age: int = 
             code_verifier=data["code_verifier"],
             redirect_url=data["redirect_url"],
             nonce=data["nonce"],
+            origin=data.get("origin"),
         )
     except InvalidToken as e:
         # Fernet raises InvalidToken for bad key, bad data, OR expired TTL
@@ -571,34 +572,41 @@ def validate_allow_roles_at_startup(app: Any, auth_service: AuthService) -> None
             )
 
 
-def validate_redirect_url(redirect_url: str, base_url: str) -> None:
-    """Validate redirect URL to prevent open redirect attacks.
+def get_request_origin() -> str:
+    """Return the origin (scheme://host) the current request came in on.
 
-    Only allows relative URLs or URLs matching the base URL origin.
+    ``create_app`` wraps the app in ProxyFix, which trusts one proxy hop's
+    X-Forwarded-Proto and X-Forwarded-Host, so this is the browser-facing
+    origin when the hop in front passes them on: the frontend's nginx in
+    production (an edge's values pass through it), Vite's proxy in
+    development and the Playwright run. The OIDC ``redirect_uri`` and
+    ``post_logout_redirect_uri`` are built from it.
+    """
+    return f"{request.scheme}://{request.host}"
+
+
+def validate_redirect_url(redirect_url: str) -> None:
+    """Accept only a path on the app's own origin, to prevent open redirects.
+
+    The redirect parameter must be an absolute path, such as
+    ``/items?filter=1``; the origin always comes from the request. Rejected:
+    a scheme or host (``https://evil.com``, ``//evil.com``); backslashes and
+    control characters, because browsers read a backslash as a slash and
+    drop tabs and newlines, so both can turn a path into ``//evil.com``; and
+    paths without a leading slash, which would resolve against ``/api/auth/``.
 
     Args:
         redirect_url: URL to validate
-        base_url: Base URL (BASEURL from config)
 
     Raises:
-        ValidationException: If redirect URL is invalid or external
+        ValidationException: If the redirect URL is not a path on this origin
     """
-    # Parse URLs
-    redirect_parsed = urlparse(redirect_url)
-    base_parsed = urlparse(base_url)
-
-    # Allow relative URLs (no scheme or netloc)
-    if not redirect_parsed.scheme and not redirect_parsed.netloc:
-        return
-
-    # Allow URLs with same origin as base URL
     if (
-        redirect_parsed.scheme == base_parsed.scheme
-        and redirect_parsed.netloc == base_parsed.netloc
+        not redirect_url.startswith("/")
+        or redirect_url.startswith("//")
+        or "\\" in redirect_url
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in redirect_url)
     ):
-        return
-
-    # Reject external URLs
-    raise ValidationException(
-        "Invalid redirect URL - external redirects not allowed"
-    )
+        raise ValidationException(
+            "Invalid redirect URL - must be a path on this site"
+        )
