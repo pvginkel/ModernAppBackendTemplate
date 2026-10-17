@@ -102,6 +102,7 @@ _exclude:
   - "{% if not use_database %}app/services/diagnostics_service.py{% endif %}"
   - "{% if not use_database %}app/utils/pool_diagnostics.py{% endif %}"
   - "{% if not use_database %}app/utils/empty_string_normalization.py{% endif %}"
+  - "{% if not use_database %}app/utils/pagination.py{% endif %}"
   - "{% if not use_database %}alembic.ini{% endif %}"
   - "{% if not use_database %}alembic{% endif %}"
   - "{% if not use_database %}scripts/initialize-sqlite-database.sh{% endif %}"

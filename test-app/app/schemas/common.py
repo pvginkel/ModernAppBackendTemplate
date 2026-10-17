@@ -1,8 +1,10 @@
 """Common response schemas for consistent API structure."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+SortDirection = Literal["asc", "desc"]
 
 
 class ErrorDetailsSchema(BaseModel):
@@ -84,6 +86,28 @@ class PaginationMetaSchema(BaseModel):
     per_page: int = Field(..., description="Items per page", json_schema_extra={"example": 20})
     total: int = Field(..., description="Total number of items", json_schema_extra={"example": 150})
     total_pages: int = Field(..., description="Total number of pages", json_schema_extra={"example": 8})
+    sort_by: str | None = Field(None, description="The column the list is sorted by")
+    sort_dir: SortDirection | None = Field(None, description="Sort direction")
+
+
+class PaginationQuerySchema(BaseModel):
+    """Base query schema for a paged list endpoint.
+
+    Subclass it and add ``sort_by`` as a ``Literal`` of the columns the endpoint
+    sorts by, with a default; pass both to ``app.utils.pagination.apply_sorting()``,
+    which adds the ``id`` tiebreaker that keeps pages stable.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    page: int = Field(1, ge=1, description="Page number, from 1")
+    per_page: int = Field(20, ge=1, le=100, description="Items per page")
+    sort_dir: SortDirection = Field("asc", description="Sort direction")
+
+    @property
+    def offset(self) -> int:
+        """The number of rows before this page."""
+        return (self.page - 1) * self.per_page
 
 
 class PaginatedResponseSchema(BaseModel):
