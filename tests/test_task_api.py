@@ -43,6 +43,9 @@ class TestTaskAPI:
             app.container.task_service.override(task_service_mock)
             response = client.get("/api/tasks/nonexistent/status")
             assert response.status_code == 404
+            data = response.get_json()
+            assert data["code"] == "RECORD_NOT_FOUND"
+            assert data["error"] == "Task nonexistent was not found"
 
     def test_cancel_task_success(self, client, app, task_service_mock):
         task_service_mock.cancel_task.return_value = True
@@ -59,6 +62,9 @@ class TestTaskAPI:
             app.container.task_service.override(task_service_mock)
             response = client.post("/api/tasks/nonexistent/cancel")
             assert response.status_code == 404
+            data = response.get_json()
+            assert data["code"] == "RECORD_NOT_FOUND"
+            assert data["error"] == "Cancellable task nonexistent was not found"
 
     def test_remove_task_success(self, client, app, task_service_mock):
         task_service_mock.remove_completed_task.return_value = True
@@ -75,6 +81,9 @@ class TestTaskAPI:
             app.container.task_service.override(task_service_mock)
             response = client.delete("/api/tasks/nonexistent")
             assert response.status_code == 404
+            data = response.get_json()
+            assert data["code"] == "RECORD_NOT_FOUND"
+            assert data["error"] == "Finished task nonexistent was not found"
 
 
 class TestTaskAPIIntegration:
@@ -180,6 +189,13 @@ class TestTaskOwnership:
             client.delete(f"/api/tasks/{task_id}"),
         )
 
+    @staticmethod
+    def _error_of(response):
+        """The status and error body, less the request's own correlation id."""
+        body = response.get_json()
+        body.pop("correlationId", None)
+        return response.status_code, body
+
     def test_owner_reads_cancels_and_removes_own_task(
         self, oidc_app, oidc_client, generate_test_jwt, owned_tasks
     ):
@@ -214,9 +230,11 @@ class TestTaskOwnership:
         oidc_client.set_cookie("access_token", generate_test_jwt(subject="bob"))
 
         refused = self._call_all(oidc_client, "alice-task")
-        unknown = self._call_all(oidc_client, "no-such-task")
+        owned_tasks.get_task_status.side_effect = lambda task_id: None
+        unknown = self._call_all(oidc_client, "alice-task")
 
-        assert [r.get_json() for r in refused] == [r.get_json() for r in unknown]
+        assert [self._error_of(r) for r in refused] == [self._error_of(r) for r in unknown]
+        assert [r.status_code for r in refused] == [404, 404, 404]
 
     def test_task_without_subject_is_nobodys_with_oidc_enabled(
         self, oidc_app, oidc_client, generate_test_jwt, owned_tasks

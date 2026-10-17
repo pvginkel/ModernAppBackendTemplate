@@ -8,6 +8,10 @@ only that caller can read, cancel or remove it. With OIDC disabled, the local
 admin owns every task. With OIDC enabled, a task started without a subject (a
 system task) belongs to nobody. To any other caller the task does not exist:
 the endpoints answer 404, as for an unknown id.
+
+A task that doesn't exist, or that the call can't apply to (cancelling a
+finished task, removing an unfinished one), raises RecordNotFoundException,
+which the error handlers answer with 404 and the error envelope.
 """
 
 import logging
@@ -17,6 +21,7 @@ from dependency_injector.wiring import Provide, inject
 from flask import Blueprint, jsonify
 
 from app.config import Settings
+from app.exceptions import RecordNotFoundException
 from app.schemas.task_schema import TaskInfo
 from app.services.container import ServiceContainer
 from app.services.task_service import TaskService
@@ -58,7 +63,7 @@ def get_task_status(
     """Get current status of a task."""
     task_info = _find_caller_task(task_service, task_id, settings)
     if not task_info:
-        return jsonify({"error": "Task not found"}), 404
+        raise RecordNotFoundException("Task", task_id)
 
     return jsonify(task_info.model_dump())
 
@@ -72,11 +77,11 @@ def cancel_task(
 ) -> Any:
     """Cancel a running task."""
     if _find_caller_task(task_service, task_id, settings) is None:
-        return jsonify({"error": "Task not found or cannot be cancelled"}), 404
+        raise RecordNotFoundException("Cancellable task", task_id)
 
     success = task_service.cancel_task(task_id)
     if not success:
-        return jsonify({"error": "Task not found or cannot be cancelled"}), 404
+        raise RecordNotFoundException("Cancellable task", task_id)
 
     return jsonify({"success": True, "message": "Task cancellation requested"})
 
@@ -90,10 +95,10 @@ def remove_task(
 ) -> Any:
     """Remove a completed task from registry."""
     if _find_caller_task(task_service, task_id, settings) is None:
-        return jsonify({"error": "Task not found or not completed"}), 404
+        raise RecordNotFoundException("Finished task", task_id)
 
     success = task_service.remove_completed_task(task_id)
     if not success:
-        return jsonify({"error": "Task not found or not completed"}), 404
+        raise RecordNotFoundException("Finished task", task_id)
 
     return jsonify({"success": True, "message": "Task removed from registry"})
