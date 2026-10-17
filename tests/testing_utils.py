@@ -27,6 +27,11 @@ class StubLifecycleCoordinator(LifecycleCoordinatorProtocol):
         """Store notification callback."""
         self._notifications.append(callback)
 
+    def unregister_lifecycle_notification(self, callback: Callable[[LifecycleEvent], None]) -> None:
+        """Forget a stored notification callback (idempotent)."""
+        if callback in self._notifications:
+            self._notifications.remove(callback)
+
     def register_shutdown_waiter(self, name: str, handler: Callable[[float], bool]) -> None:
         """Store shutdown waiter."""
         self._waiters[name] = handler

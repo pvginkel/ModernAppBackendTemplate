@@ -123,10 +123,6 @@ def create_app(settings: "Settings | None" = None, app_settings: "AppSettings | 
         from app.utils.log_capture import LogCaptureHandler
         log_handler = LogCaptureHandler.get_instance()
 
-        # Set lifecycle coordinator for connection_close events
-        lifecycle_coordinator = container.lifecycle_coordinator()
-        log_handler.set_lifecycle_coordinator(lifecycle_coordinator)
-
         root_logger = logging.getLogger()
         root_logger.addHandler(log_handler)
 

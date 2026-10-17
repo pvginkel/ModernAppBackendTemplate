@@ -214,6 +214,53 @@ class TestProductionLifecycleCoordinator:
         assert events_received[3] == LifecycleEvent.AFTER_SHUTDOWN
 
 
+class TestLifecycleCoordinatorUnregister:
+    """Unregistering a notification, including from inside a dispatch."""
+
+    def test_unregister_removes_callback(self) -> None:
+        coordinator = LifecycleCoordinator(graceful_shutdown_timeout=1)
+        calls: list[LifecycleEvent] = []
+
+        def callback(event: LifecycleEvent) -> None:
+            calls.append(event)
+
+        coordinator.register_lifecycle_notification(callback)
+        coordinator.unregister_lifecycle_notification(callback)
+
+        coordinator._raise_lifecycle_event(LifecycleEvent.SHUTDOWN)
+        assert calls == []
+
+    def test_unregister_unknown_callback_is_noop(self) -> None:
+        coordinator = LifecycleCoordinator(graceful_shutdown_timeout=1)
+
+        def callback(event: LifecycleEvent) -> None:
+            pass
+
+        coordinator.unregister_lifecycle_notification(callback)
+
+    def test_callback_self_unregister_during_dispatch(self) -> None:
+        coordinator = LifecycleCoordinator(graceful_shutdown_timeout=1)
+        calls: list[str] = []
+
+        def first(event: LifecycleEvent) -> None:
+            calls.append("first")
+            coordinator.unregister_lifecycle_notification(first)
+
+        def second(event: LifecycleEvent) -> None:
+            calls.append("second")
+
+        coordinator.register_lifecycle_notification(first)
+        coordinator.register_lifecycle_notification(second)
+
+        # The dispatch runs over a snapshot, so removing `first` mid-dispatch
+        # neither skips `second` nor raises.
+        coordinator._raise_lifecycle_event(LifecycleEvent.SHUTDOWN)
+        assert calls == ["first", "second"]
+
+        coordinator._raise_lifecycle_event(LifecycleEvent.SHUTDOWN)
+        assert calls == ["first", "second", "second"]
+
+
 class TestNoopLifecycleCoordinator:
     """Test no-op lifecycle coordinator for testing."""
 
