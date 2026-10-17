@@ -149,7 +149,9 @@ class TaskService:
             caller_subject: OIDC subject of the user starting the task.
                 When set, task events are only delivered to SSE connections
                 with a matching subject (or the ``"local-user"`` sentinel).
-                When None, events are broadcast to all connections.
+                When None, events are broadcast to all connections. The
+                subject also owns the task: only that caller can read,
+                cancel or remove it through ``/api/tasks``.
             **kwargs: Task-specific parameters
 
         Returns:

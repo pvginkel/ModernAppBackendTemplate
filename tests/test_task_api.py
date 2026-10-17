@@ -1,7 +1,7 @@
 """Tests for task API endpoints."""
 
 import time
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -133,3 +133,166 @@ class TestTaskAPIIntegration:
             time.sleep(0.2)
             status_response = client.get(f"/api/tasks/{task_id}/status")
             assert status_response.get_json()["status"] == TaskStatus.CANCELLED.value
+
+
+class TestTaskOwnership:
+    """Only the subject that started a task can read, cancel or remove it.
+
+    With OIDC disabled the local admin owns every task. With OIDC enabled a
+    task without a subject belongs to nobody. A caller who doesn't own a task
+    gets the same 404 as for an unknown id.
+    """
+
+    @pytest.fixture
+    def owned_tasks(self):
+        """A mock TaskService holding a task per owner, and one without."""
+        tasks = {
+            "alice-task": TaskInfo(
+                task_id="alice-task",
+                subject="alice",
+                status=TaskStatus.COMPLETED,
+                start_time="2023-01-01T00:00:00",
+            ),
+            "tester-task": TaskInfo(
+                task_id="tester-task",
+                subject="tester",
+                status=TaskStatus.COMPLETED,
+                start_time="2023-01-01T00:00:00",
+            ),
+            "system-task": TaskInfo(
+                task_id="system-task",
+                subject=None,
+                status=TaskStatus.COMPLETED,
+                start_time="2023-01-01T00:00:00",
+            ),
+        }
+        service = Mock(spec=TaskService)
+        service.get_task_status.side_effect = tasks.get
+        service.cancel_task.return_value = True
+        service.remove_completed_task.return_value = True
+        return service
+
+    @staticmethod
+    def _call_all(client, task_id):
+        return (
+            client.get(f"/api/tasks/{task_id}/status"),
+            client.post(f"/api/tasks/{task_id}/cancel"),
+            client.delete(f"/api/tasks/{task_id}"),
+        )
+
+    def test_owner_reads_cancels_and_removes_own_task(
+        self, oidc_app, oidc_client, generate_test_jwt, owned_tasks
+    ):
+        oidc_app.container.task_service.override(owned_tasks)
+        oidc_client.set_cookie("access_token", generate_test_jwt(subject="alice"))
+
+        status, cancel, remove = self._call_all(oidc_client, "alice-task")
+
+        assert status.status_code == 200
+        assert status.get_json()["subject"] == "alice"
+        assert cancel.status_code == 200
+        assert remove.status_code == 200
+        owned_tasks.cancel_task.assert_called_once_with("alice-task")
+        owned_tasks.remove_completed_task.assert_called_once_with("alice-task")
+
+    def test_other_subject_gets_404_and_task_is_untouched(
+        self, oidc_app, oidc_client, generate_test_jwt, owned_tasks
+    ):
+        oidc_app.container.task_service.override(owned_tasks)
+        oidc_client.set_cookie("access_token", generate_test_jwt(subject="bob"))
+
+        responses = self._call_all(oidc_client, "alice-task")
+
+        assert [r.status_code for r in responses] == [404, 404, 404]
+        owned_tasks.cancel_task.assert_not_called()
+        owned_tasks.remove_completed_task.assert_not_called()
+
+    def test_refusal_reads_like_an_unknown_task(
+        self, oidc_app, oidc_client, generate_test_jwt, owned_tasks
+    ):
+        oidc_app.container.task_service.override(owned_tasks)
+        oidc_client.set_cookie("access_token", generate_test_jwt(subject="bob"))
+
+        refused = self._call_all(oidc_client, "alice-task")
+        unknown = self._call_all(oidc_client, "no-such-task")
+
+        assert [r.get_json() for r in refused] == [r.get_json() for r in unknown]
+
+    def test_task_without_subject_is_nobodys_with_oidc_enabled(
+        self, oidc_app, oidc_client, generate_test_jwt, owned_tasks
+    ):
+        """An admin doesn't own a system task either."""
+        oidc_app.container.task_service.override(owned_tasks)
+        oidc_client.set_cookie(
+            "access_token", generate_test_jwt(subject="alice", roles=["admin"])
+        )
+
+        responses = self._call_all(oidc_client, "system-task")
+
+        assert [r.status_code for r in responses] == [404, 404, 404]
+        owned_tasks.cancel_task.assert_not_called()
+        owned_tasks.remove_completed_task.assert_not_called()
+
+    def test_jwt_subject_local_user_owns_nothing_with_oidc_enabled(
+        self, oidc_app, oidc_client, generate_test_jwt, owned_tasks
+    ):
+        """The local admin exemption needs OIDC off, not just the subject."""
+        oidc_app.container.task_service.override(owned_tasks)
+        oidc_client.set_cookie("access_token", generate_test_jwt(subject="local-user"))
+
+        assert oidc_client.get("/api/tasks/alice-task/status").status_code == 404
+        assert oidc_client.get("/api/tasks/system-task/status").status_code == 404
+
+    @pytest.mark.parametrize("task_id", ["alice-task", "system-task"])
+    def test_local_admin_owns_every_task_with_oidc_disabled(
+        self, app, client, owned_tasks, task_id
+    ):
+        app.container.task_service.override(owned_tasks)
+
+        responses = self._call_all(client, task_id)
+
+        assert [r.status_code for r in responses] == [200, 200, 200]
+
+    def test_test_session_with_oidc_disabled_owns_its_own_tasks_only(
+        self, app, client, owned_tasks
+    ):
+        """A test session is a caller of its own, not the local admin."""
+        app.container.task_service.override(owned_tasks)
+        token = app.container.testing_service().create_session(subject="tester")
+        client.set_cookie("access_token", token)
+
+        assert client.get("/api/tasks/tester-task/status").status_code == 200
+        assert client.get("/api/tasks/alice-task/status").status_code == 404
+        assert client.get("/api/tasks/system-task/status").status_code == 404
+
+    def test_real_task_service_lifecycle_for_owner_and_stranger(
+        self, oidc_app, oidc_client, generate_test_jwt
+    ):
+        service = TaskService(
+            lifecycle_coordinator=StubLifecycleCoordinator(),
+            sse_connection_manager=MagicMock(),
+            max_workers=1,
+            task_timeout=10,
+        )
+        try:
+            oidc_app.container.task_service.override(service)
+            task_id = service.start_task(
+                DemoTask(), caller_subject="alice", steps=1, delay=0.01
+            ).task_id
+            deadline = time.monotonic() + 5
+            while service.get_task_status(task_id).status != TaskStatus.COMPLETED:
+                assert time.monotonic() < deadline, "the task did not complete"
+                time.sleep(0.01)
+
+            oidc_client.set_cookie("access_token", generate_test_jwt(subject="bob"))
+            assert oidc_client.delete(f"/api/tasks/{task_id}").status_code == 404
+            assert service.get_task_status(task_id) is not None
+
+            oidc_client.set_cookie("access_token", generate_test_jwt(subject="alice"))
+            status = oidc_client.get(f"/api/tasks/{task_id}/status")
+            assert status.status_code == 200
+            assert status.get_json()["status"] == TaskStatus.COMPLETED.value
+            assert oidc_client.delete(f"/api/tasks/{task_id}").status_code == 200
+            assert service.get_task_status(task_id) is None
+        finally:
+            service.shutdown()
