@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from app.exceptions import InvalidOperationException
 from app.schemas.task_schema import TaskEvent, TaskEventType, TaskInfo, TaskStatus
 from app.services.base_task import BaseTask, ProgressHandle
+from app.services.sse_connection_manager import Target
 from app.services.task_service import (
     ACTIVE_TASKS_AT_SHUTDOWN,
     TaskProgressHandle,
@@ -78,7 +79,7 @@ def service(coordinator: TestLifecycleCoordinator, sse: MagicMock) -> Generator[
 
 class TestTaskProgressHandle:
     def test_progress_never_decreases(self, sse: MagicMock):
-        handle = TaskProgressHandle("task-1", sse, target_subject="u")
+        handle = TaskProgressHandle("task-1", sse, Target.subject("u"))
 
         handle.send_progress("step 1", 0.8)
         handle.send_progress("step 2", 0.5)
@@ -86,7 +87,7 @@ class TestTaskProgressHandle:
         assert handle.progress == 0.8
 
     def test_text_update_keeps_the_value(self, sse: MagicMock):
-        handle = TaskProgressHandle("task-1", sse, target_subject="u")
+        handle = TaskProgressHandle("task-1", sse, Target.subject("u"))
 
         handle.send_progress("first", 0.3)
         handle.send_progress_text("second")
@@ -95,7 +96,7 @@ class TestTaskProgressHandle:
         assert handle.progress == 0.3
 
     def test_value_update_keeps_the_text(self, sse: MagicMock):
-        handle = TaskProgressHandle("task-1", sse, target_subject="u")
+        handle = TaskProgressHandle("task-1", sse, Target.subject("u"))
 
         handle.send_progress("initial", 0.1)
         handle.send_progress_value(0.9)
@@ -105,7 +106,7 @@ class TestTaskProgressHandle:
 
     def test_send_failure_is_swallowed(self, sse: MagicMock):
         sse.send_event.side_effect = RuntimeError("connection lost")
-        handle = TaskProgressHandle("task-1", sse, target_subject="u")
+        handle = TaskProgressHandle("task-1", sse, Target.subject("u"))
 
         handle.send_progress("step", 0.5)
 
@@ -152,14 +153,15 @@ class TestExecuteTask:
         assert service._tasks["t-1"].status == TaskStatus.CANCELLED
 
 
-class TestBroadcastTaskEvent:
+class TestSendTaskEvent:
     def test_event_is_serialised_as_json(self, service: TaskService, sse: MagicMock):
         event = TaskEvent(event_type=TaskEventType.TASK_STARTED, task_id="t-1", data=None)
 
-        service._broadcast_task_event(event, target_subject="user-sub")
+        service._send_task_event(event, Target.subject("user-sub"))
 
         sse.send_event.assert_called_once()
         call = sse.send_event.call_args
+        assert call.args[0] == Target.subject("user-sub")
         assert call.kwargs["event_name"] == "task_event"
         # mode="json": the timestamp is a string on the wire.
         assert isinstance(call.args[1]["timestamp"], str)
@@ -168,7 +170,7 @@ class TestBroadcastTaskEvent:
         sse.send_event.return_value = False
         event = TaskEvent(event_type=TaskEventType.TASK_COMPLETED, task_id="t-2", data=None)
 
-        service._broadcast_task_event(event, target_subject="user-sub")
+        service._send_task_event(event, Target.subject("user-sub"))
 
 
 class TestRemoveTask:

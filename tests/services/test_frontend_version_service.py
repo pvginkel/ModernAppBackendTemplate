@@ -6,6 +6,7 @@ import pytest
 
 from app.config import Settings
 from app.services.frontend_version_service import FrontendVersionService
+from app.services.sse_connection_manager import BROADCAST_TARGET, Target
 from tests.testing_utils import StubLifecycleCoordinator
 
 
@@ -41,7 +42,10 @@ class TestVersionOnConnect:
         service._on_connect_callback("req-1")
 
         manager.send_event.assert_called_once()
-        assert manager.send_event.call_args.args[1] == {"version": "v2"}
+        assert manager.send_event.call_args.args[:2] == (
+            Target.connection("req-1"),
+            {"version": "v2"},
+        )
 
     @pytest.mark.parametrize("stage", ["prd", "tst"])
     def test_deployed_stage_fetches_and_sends_the_version(
@@ -56,4 +60,21 @@ class TestVersionOnConnect:
         service._on_connect_callback("req-1")
 
         manager.send_event.assert_called_once()
-        assert manager.send_event.call_args.args[:2] == ("req-1", {"version": "v1"})
+        assert manager.send_event.call_args.args[:2] == (
+            Target.connection("req-1"),
+            {"version": "v1"},
+        )
+
+
+class TestQueueVersionEvent:
+    def test_queued_version_is_broadcast(self):
+        """The version concerns every client: the one broadcast the template sends."""
+        service, manager = _service("prd")
+
+        service.queue_version_event("req-1", "v3", changelog="notes")
+
+        manager.send_event.assert_called_once()
+        assert manager.send_event.call_args.args[:2] == (
+            BROADCAST_TARGET,
+            {"version": "v3", "changelog": "notes"},
+        )

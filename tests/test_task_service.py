@@ -6,7 +6,12 @@ from datetime import UTC
 import pytest
 
 from app.schemas.task_schema import TaskEventType, TaskStatus
-from app.services.task_service import TaskProgressHandle, TaskService
+from app.services.sse_connection_manager import (
+    BROADCAST_TARGET,
+    LOCAL_ADMIN_TARGET,
+    Target,
+)
+from app.services.task_service import TaskProgressHandle, TaskService, task_event_target
 from tests.test_tasks.test_task import DemoTask, FailingTask, LongRunningTask
 from tests.testing_utils import StubLifecycleCoordinator
 
@@ -110,8 +115,8 @@ class TestTaskService:
         assert TaskEventType.PROGRESS_UPDATE in event_types
         assert TaskEventType.TASK_COMPLETED in event_types
 
-    def test_task_events_include_target_subject(self, task_service, mock_sse_connection_manager):
-        """When caller_subject is set, all task events pass it as target_subject."""
+    def test_task_events_go_to_the_caller(self, task_service, mock_sse_connection_manager):
+        """When caller_subject is set, every task event targets that subject."""
         task = DemoTask()
         task_service.start_task(task, caller_subject="alice", steps=1, delay=0.05)
         time.sleep(0.3)
@@ -120,12 +125,17 @@ class TestTaskService:
         assert len(calls) > 0
 
         for call in calls:
-            assert call.kwargs.get("target_subject") == "alice", (
-                f"Expected target_subject='alice', got {call.kwargs}"
+            assert call.args[0] == Target.subject("alice"), (
+                f"Expected Target.subject('alice'), got {call.args[0]!r}"
             )
 
-    def test_task_events_broadcast_when_no_subject(self, task_service, mock_sse_connection_manager):
-        """When caller_subject is None, events broadcast to all (target_subject=None)."""
+    def test_task_events_never_broadcast_when_no_subject(
+        self, task_service, mock_sse_connection_manager
+    ):
+        """When caller_subject is None, every task event goes to the local admin only.
+
+        With OIDC on nobody is the local admin, so the events reach nobody.
+        """
         task = DemoTask()
         task_service.start_task(task, steps=1, delay=0.05)
         time.sleep(0.3)
@@ -134,9 +144,10 @@ class TestTaskService:
         assert len(calls) > 0
 
         for call in calls:
-            assert call.kwargs.get("target_subject") is None, (
-                f"Expected target_subject=None, got {call.kwargs}"
+            assert call.args[0] == LOCAL_ADMIN_TARGET, (
+                f"Expected LOCAL_ADMIN_TARGET, got {call.args[0]!r}"
             )
+            assert call.args[0] != BROADCAST_TARGET
 
     def test_concurrent_tasks(self, task_service):
         responses = []
@@ -186,7 +197,9 @@ class TestTaskProgressHandle:
         from unittest.mock import Mock
 
         mock_sse_connection_manager = Mock()
-        handle = TaskProgressHandle("test-task-id", mock_sse_connection_manager)
+        handle = TaskProgressHandle(
+            "test-task-id", mock_sse_connection_manager, Target.subject("alice")
+        )
 
         handle.send_progress_text("Text update")
         handle.send_progress_value(0.5)
@@ -197,9 +210,9 @@ class TestTaskProgressHandle:
         calls = mock_sse_connection_manager.send_event.call_args_list
 
         text_call = calls[0]
-        request_id = text_call.args[0]
+        target = text_call.args[0]
         text_event = text_call.args[1]
-        assert request_id is None
+        assert target == Target.subject("alice")
         assert text_event["event_type"] == TaskEventType.PROGRESS_UPDATE
         assert text_event["task_id"] == "test-task-id"
         assert text_event["data"]["text"] == "Text update"
@@ -213,26 +226,37 @@ class TestTaskProgressHandle:
         assert combined_event["data"]["text"] == "Combined update"
         assert combined_event["data"]["value"] == 0.75
 
-    def test_progress_handle_passes_target_subject(self):
+    def test_progress_handle_passes_its_target(self):
         from unittest.mock import Mock
 
         mock_sse_connection_manager = Mock()
         handle = TaskProgressHandle(
-            "test-task-id", mock_sse_connection_manager, target_subject="alice"
+            "test-task-id", mock_sse_connection_manager, Target.subject("alice")
         )
 
         handle.send_progress("Step 1", 0.5)
 
         call = mock_sse_connection_manager.send_event.call_args
-        assert call.kwargs["target_subject"] == "alice"
+        assert call.args[0] == Target.subject("alice")
+        assert call.kwargs == {"event_name": "task_event", "service_type": "task"}
 
-    def test_progress_handle_none_subject_broadcasts(self):
+    def test_progress_handle_has_no_default_target(self):
+        """A progress handle never falls back to a broadcast: the target is required."""
         from unittest.mock import Mock
 
-        mock_sse_connection_manager = Mock()
-        handle = TaskProgressHandle("test-task-id", mock_sse_connection_manager)
+        with pytest.raises(TypeError):
+            TaskProgressHandle("test-task-id", Mock())  # type: ignore[call-arg]
 
-        handle.send_progress("Step 1", 0.5)
 
-        call = mock_sse_connection_manager.send_event.call_args
-        assert call.kwargs["target_subject"] is None
+class TestTaskEventTarget:
+    """Where a task's events go."""
+
+    def test_caller_subject_targets_the_caller(self):
+        assert task_event_target("alice") == Target.subject("alice")
+
+    def test_no_subject_targets_the_local_admin_only(self):
+        assert task_event_target(None) == LOCAL_ADMIN_TARGET
+
+    def test_local_user_subject_is_a_subject_target(self):
+        """The local admin's own tasks carry its subject, like anyone's."""
+        assert task_event_target("local-user") == Target.subject("local-user")

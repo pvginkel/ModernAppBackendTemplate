@@ -5,8 +5,10 @@ verifying the callback-based architecture works correctly with actual HTTP
 communication between Python backend and SSE Gateway.
 
 All clients connect to the unified /api/sse/stream?request_id=<id> endpoint.
-Task events are broadcast to all connections, so the task_id is used as the
-request_id to receive events for a specific task.
+The tasks start through the testing endpoint, outside the API blueprint, so
+they have no subject: their events go to the local admin, which every
+connection is with OIDC off. The task_id is used as the request_id to tell
+the tests' connections apart.
 """
 
 import time

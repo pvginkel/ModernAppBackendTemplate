@@ -10,7 +10,11 @@ from typing import Any, cast
 import requests
 
 from app.config import Settings
-from app.services.sse_connection_manager import SSEConnectionManager
+from app.services.sse_connection_manager import (
+    BROADCAST_TARGET,
+    SSEConnectionManager,
+    Target,
+)
 from app.utils.lifecycle_coordinator import LifecycleCoordinatorProtocol, LifecycleEvent
 
 logger = logging.getLogger(__name__)
@@ -82,7 +86,7 @@ class FrontendVersionService:
 
         # Send version event via SSEConnectionManager
         success = self.sse_connection_manager.send_event(
-            request_id,
+            Target.connection(request_id),
             version_payload,
             event_name="version",
             service_type="version"
@@ -124,7 +128,7 @@ class FrontendVersionService:
 
         # Broadcast to all connected clients
         self.sse_connection_manager.send_event(
-            None,  # None = broadcast to all connections
+            BROADCAST_TARGET,  # the version concerns every client
             event_payload,
             event_name="version",
             service_type="version"
