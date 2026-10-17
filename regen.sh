@@ -10,11 +10,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# The sidecar's uv cache and /work are different mounts, so hardlinks fail.
+export UV_LINK_MODE=copy
+
 echo "==> Removing old test-app..."
 rm -rf test-app
 
 echo "==> Running copier copy..."
-poetry run copier copy . test-app --trust --defaults --vcs-ref HEAD \
+uv run --locked copier copy . test-app --trust --defaults --vcs-ref HEAD \
   -d project_name=test-app \
   -d project_description="Test application" \
   -d author_name="Test Author" \
@@ -43,10 +46,10 @@ echo "==> Copying .env.test..."
 cp .env.test test-app/.env.test
 
 echo "==> Installing dependencies..."
-cd test-app && poetry sync -q
+cd test-app && uv sync -q
 
 echo ""
 echo "Done. Run tests with:"
 echo "  cd test-app"
-echo "  python -m pytest ../tests/ -v      # Mother project tests (infrastructure)"
-echo "  python -m pytest tests/ -v          # Domain tests (Items CRUD)"
+echo "  uv run pytest ../tests/ -v      # Mother project tests (infrastructure)"
+echo "  uv run pytest tests/ -v          # Domain tests (Items CRUD)"

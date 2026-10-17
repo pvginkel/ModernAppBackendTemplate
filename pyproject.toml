@@ -1,18 +1,20 @@
-[tool.poetry]
+[project]
 name = "modern-app-backend-template"
 version = "0.1.0"
 description = "Copier template for modern Flask backend applications"
-authors = ["Your Name <your.email@example.com>"]
-package-mode = false
+requires-python = ">=3.13,<4"
 
-[tool.poetry.dependencies]
-python = "^3.13"
+# copier is pinned: every regen and every app's `copier update` runs this copy
+# (`uv run --project /work/ModernAppTemplate/backend copier ...`), and a copier
+# minor release can change how an update merges.
+[dependency-groups]
+dev = [
+    "copier==9.11.3",
+    "pytest>=8.0.0,<9",
+    "pytest-mock>=3.12.0,<4",
+]
 
-[tool.poetry.group.dev.dependencies]
-copier = "^9.0.0"
-pytest = "^8.0.0"
-pytest-mock = "^3.12.0"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv]
+package = false
+# The sidecar's uv cache and /work are different mounts, so hardlinks fail.
+link-mode = "copy"

@@ -8,19 +8,21 @@ For shared documentation (architecture, workflows, sync process), see the **pare
 
 - This repository is a submodule of `ModernAppTemplate`, mounted at `/work/ModernAppTemplate/backend` inside the container.
 - Git operations (staging, committing, tagging) work normally.
-- The container includes poetry and the standard Python toolchain.
+- uv and the standard Python toolchain live in the `modern-app` tool container: prefix commands with `cexec modern-app`.
 
-## Poetry Virtual Environments
+## uv Projects
 
-Each project in the container has its own Poetry virtualenv. **Always use `poetry run`** to run commands.
+This repo and `test-app/` are separate uv projects, each with its own `.venv`. **Always use `uv run`** to run commands.
 
 ```bash
 # Correct:
-cd /work/ModernAppTemplate/backend && poetry run pytest tests/ -v
+cd /work/ModernAppTemplate/backend/test-app && uv run pytest tests/ -v
 
 # WRONG:
-cd /work/ModernAppTemplate/backend && python -m pytest tests/ -v
+cd /work/ModernAppTemplate/backend/test-app && python -m pytest tests/ -v
 ```
+
+This repo's own project holds the pinned copier that `regen.sh` and every app's `copier update` run (`uv run --project /work/ModernAppTemplate/backend copier ...`).
 
 ## Project Structure
 
@@ -31,7 +33,8 @@ backend/
 ├── test-app/           # Generated test application (DO NOT edit directly)
 ├── test-app-domain/    # Hand-written domain files copied into test-app after generation
 ├── tests/              # Mother project test suite (infrastructure tests)
-├── pyproject.toml      # Dev dependencies (copier, pytest)
+├── pyproject.toml      # Dev dependencies (copier, pinned), uv project
+├── uv.lock
 ├── regen.sh            # Regeneration script
 └── .env.test           # Test environment overrides
 ```
@@ -53,8 +56,8 @@ bash regen.sh
 ### 4. Run Both Test Suites
 ```bash
 cd /work/ModernAppTemplate/backend/test-app
-poetry run pytest ../tests/ -v      # Mother project tests (infrastructure)
-poetry run pytest tests/ -v          # Domain tests (Items CRUD)
+uv run pytest ../tests/ -v      # Mother project tests (infrastructure)
+uv run pytest tests/ -v          # Domain tests (Items CRUD)
 ```
 
 The mother suite needs two things from outside this repo:
@@ -115,8 +118,8 @@ The app customizes behavior through hooks in `app/startup.py`:
 Both `tests/conftest.py` (mother project) and `test-app/tests/conftest.py` (domain) share the module name `tests.conftest`. Always run them separately:
 ```bash
 cd test-app
-poetry run pytest ../tests/ -v      # Mother project
-poetry run pytest tests/ -v          # Domain
+uv run pytest ../tests/ -v      # Mother project
+uv run pytest tests/ -v          # Domain
 ```
 
 ## Reference App
