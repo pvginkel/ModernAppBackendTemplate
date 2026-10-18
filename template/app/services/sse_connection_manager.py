@@ -303,16 +303,7 @@ class SSEConnectionManager:
                 self._token_to_request_id.pop(token, None)
                 return
 
-            # Remove both mappings + identity
-            del self._connections[request_id]
-            del self._token_to_request_id[token]
-            self._identity_map.pop(request_id, None)
-            self._local_admin_ids.discard(request_id)
-
-            # Record disconnect metric
-            SSE_GATEWAY_CONNECTIONS_TOTAL.labels(action="disconnect").inc()
-            SSE_GATEWAY_ACTIVE_CONNECTIONS.dec()
-
+            self._remove_connection(request_id, token)
             disconnected_request_id = request_id
 
             logger.info(
@@ -325,22 +316,42 @@ class SSEConnectionManager:
 
         # Notify disconnect observers OUTSIDE the lock (same pattern as on_connect)
         if disconnected_request_id is not None:
-            with self._lock:
-                callbacks_to_notify = list(self._on_disconnect_callbacks)
+            self._notify_disconnect(disconnected_request_id)
 
-            for callback in callbacks_to_notify:
-                try:
-                    callback(disconnected_request_id)
-                except Exception as e:
-                    logger.warning(
-                        "Observer callback raised exception during on_disconnect",
-                        exc_info=True,
-                        extra={
-                            "request_id": disconnected_request_id,
-                            "callback": getattr(callback, "__name__", repr(callback)),
-                            "error": str(e),
-                        }
-                    )
+    def _remove_connection(self, request_id: str, token: str) -> None:
+        """Drop a connection's mappings and identity, and count it as disconnected.
+
+        Must be called with the lock held, for the connection that is current
+        for ``request_id``. The caller notifies the disconnect observers after
+        releasing the lock.
+        """
+        del self._connections[request_id]
+        del self._token_to_request_id[token]
+        self._identity_map.pop(request_id, None)
+        self._local_admin_ids.discard(request_id)
+
+        # Record disconnect metric
+        SSE_GATEWAY_CONNECTIONS_TOTAL.labels(action="disconnect").inc()
+        SSE_GATEWAY_ACTIVE_CONNECTIONS.dec()
+
+    def _notify_disconnect(self, request_id: str) -> None:
+        """Notify the disconnect observers; call without the lock held."""
+        with self._lock:
+            callbacks_to_notify = list(self._on_disconnect_callbacks)
+
+        for callback in callbacks_to_notify:
+            try:
+                callback(request_id)
+            except Exception as e:
+                logger.warning(
+                    "Observer callback raised exception during on_disconnect",
+                    exc_info=True,
+                    extra={
+                        "request_id": request_id,
+                        "callback": getattr(callback, "__name__", repr(callback)),
+                        "error": str(e),
+                    }
+                )
 
     def has_connection(self, request_id: str) -> bool:
         """Check if a connection exists for the given request_id.
@@ -545,18 +556,21 @@ class SSEConnectionManager:
             )
 
             if response.status_code == 404:
-                # Connection gone; clean up stale mapping
+                # The gateway no longer has the connection: drop it as a
+                # disconnect would, observers included, unless a new
+                # connection has taken the request_id meanwhile
                 logger.warning(
                     "SSE Gateway returned 404: connection not found; removing stale mapping",
                     extra={"request_id": request_id, "token": token}
                 )
-                # Only clean up if we have the request_id (known mapping)
                 if request_id:
                     with self._lock:
-                        self._connections.pop(request_id, None)
-                        self._token_to_request_id.pop(token, None)
-                        self._identity_map.pop(request_id, None)
-                        self._local_admin_ids.discard(request_id)
+                        current = self._connections.get(request_id)
+                        removed = current is not None and current["token"] == token
+                        if removed:
+                            self._remove_connection(request_id, token)
+                    if removed:
+                        self._notify_disconnect(request_id)
                 SSE_GATEWAY_EVENTS_SENT_TOTAL.labels(service=service_type, status="error").inc()
                 return False
 

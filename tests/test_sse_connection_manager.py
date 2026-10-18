@@ -9,6 +9,7 @@ from app.services.health_service import CheckResult, CheckStatus
 from app.services.sse_connection_manager import (
     BROADCAST_TARGET,
     LOCAL_ADMIN_TARGET,
+    SSE_GATEWAY_ACTIVE_CONNECTIONS,
     SSEConnectionManager,
     Target,
 )
@@ -271,6 +272,69 @@ class TestLocalAdminBinding:
         assert not sse_connection_manager.has_connection("req-1")
         assert "req-1" not in sse_connection_manager._identity_map
         assert "req-1" not in sse_connection_manager._local_admin_ids
+
+
+@patch("app.services.sse_connection_manager.requests.post")
+class TestGatewayLostConnection:
+    """A 404 on a send means the gateway lost the connection: drop it as a disconnect would."""
+
+    def test_404_notifies_the_disconnect_observers(self, mock_post, sse_connection_manager):
+        disconnected: list[str] = []
+        sse_connection_manager.register_on_disconnect(disconnected.append)
+        _connect(sse_connection_manager, "req-1")
+        mock_post.return_value = Mock(status_code=404)
+
+        assert sse_connection_manager.send_event(
+            Target.connection("req-1"), {}, event_name="e", service_type="task"
+        ) is False
+
+        assert disconnected == ["req-1"]
+        assert not sse_connection_manager.has_connection("req-1")
+        assert "tok-req-1" not in sse_connection_manager._token_to_request_id
+
+    def test_404_counts_a_disconnect(self, mock_post, sse_connection_manager):
+        _connect(sse_connection_manager, "req-1")
+        mock_post.return_value = Mock(status_code=404)
+        active = SSE_GATEWAY_ACTIVE_CONNECTIONS._value.get()
+
+        sse_connection_manager.send_event(
+            Target.connection("req-1"), {}, event_name="e", service_type="task"
+        )
+
+        assert SSE_GATEWAY_ACTIVE_CONNECTIONS._value.get() == active - 1
+
+    def test_404_for_a_replaced_connection_keeps_the_new_one(
+        self, mock_post, sse_connection_manager
+    ):
+        """The request ID reconnected before the old token's 404 came back."""
+        disconnected: list[str] = []
+        sse_connection_manager.register_on_disconnect(disconnected.append)
+        mock_post.return_value = Mock(status_code=200)
+        sse_connection_manager.on_connect("req-1", "tok-old", "/api/sse/stream?request_id=req-1")
+        sse_connection_manager.on_connect("req-1", "tok-new", "/api/sse/stream?request_id=req-1")
+        mock_post.return_value = Mock(status_code=404)
+
+        assert sse_connection_manager._send_event_to_token(
+            "tok-old", {}, "e", "task", request_id="req-1"
+        ) is False
+
+        assert disconnected == []
+        assert sse_connection_manager.has_connection("req-1")
+        assert sse_connection_manager._token_to_request_id == {"tok-new": "req-1"}
+
+    def test_later_disconnect_callback_is_ignored(self, mock_post, sse_connection_manager):
+        """The gateway's own disconnect after the 404 cleanup notifies nobody twice."""
+        disconnected: list[str] = []
+        sse_connection_manager.register_on_disconnect(disconnected.append)
+        _connect(sse_connection_manager, "req-1")
+        mock_post.return_value = Mock(status_code=404)
+        sse_connection_manager.send_event(
+            Target.connection("req-1"), {}, event_name="e", service_type="task"
+        )
+
+        sse_connection_manager.on_disconnect("tok-req-1")
+
+        assert disconnected == ["req-1"]
 
 
 class TestReadinessCheck:
