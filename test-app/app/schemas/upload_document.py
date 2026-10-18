@@ -15,8 +15,9 @@ class UploadDocumentSchema(BaseModel):
 
     title: str = Field(description="HTML title or detected filename")
     content: DocumentContentSchema = Field(description="Raw content from URL")
-    detected_type: str | None = Field(description="Attachment type detected from content (e.g., 'image', 'pdf', 'url')")
+    detected_type: str | None = Field(
+        description="Attachment type detected from content (e.g., 'image', 'pdf', 'url')"
+    )
     preview_image: DocumentContentSchema | None = Field(
-        default=None,
-        description="Preview image for websites (what goes in S3)"
+        default=None, description="Preview image for websites (what goes in S3)"
     )

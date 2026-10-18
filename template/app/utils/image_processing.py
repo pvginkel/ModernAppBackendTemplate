@@ -24,8 +24,10 @@ def validate_image_format(file_data: bytes) -> str:
     try:
         with Image.open(BytesIO(file_data)) as img:
             # Validate format is supported
-            if img.format not in ['JPEG', 'PNG', 'WEBP', 'BMP', 'TIFF']:
-                raise InvalidOperationException("validate image format", f"Unsupported image format: {img.format}")
+            if img.format not in ["JPEG", "PNG", "WEBP", "BMP", "TIFF"]:
+                raise InvalidOperationException(
+                    "validate image format", f"Unsupported image format: {img.format}"
+                )
             return img.format
     except Exception as e:
         raise InvalidOperationException("validate image file", str(e)) from e
@@ -68,14 +70,16 @@ def resize_image(file_data: bytes, max_width: int, max_height: int) -> bytes:
         with Image.open(BytesIO(file_data)) as img:
             # Convert to RGB if necessary (Pillow's convert() returns
             # Image.Image rather than ImageFile, so reassign to a new name)
-            processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
+            processed: Image.Image = (
+                img.convert("RGB") if img.mode not in ("RGB", "L") else img
+            )
 
             # Calculate new dimensions maintaining aspect ratio
             processed.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
 
             # Save to bytes
             output = BytesIO()
-            processed.save(output, 'JPEG', quality=85, optimize=True)
+            processed.save(output, "JPEG", quality=85, optimize=True)
             return output.getvalue()
 
     except Exception as e:
@@ -99,14 +103,16 @@ def create_thumbnail(file_data: bytes, size: int) -> bytes:
         with Image.open(BytesIO(file_data)) as img:
             # Convert to RGB if necessary (Pillow's convert() returns
             # Image.Image rather than ImageFile, so reassign to a new name)
-            processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
+            processed: Image.Image = (
+                img.convert("RGB") if img.mode not in ("RGB", "L") else img
+            )
 
             # Create thumbnail maintaining aspect ratio
             processed.thumbnail((size, size), Image.Resampling.LANCZOS)
 
             # Save as JPEG
             output = BytesIO()
-            processed.save(output, 'JPEG', quality=85, optimize=True)
+            processed.save(output, "JPEG", quality=85, optimize=True)
             return output.getvalue()
 
     except Exception as e:
@@ -128,26 +134,27 @@ def extract_image_metadata(file_data: bytes) -> dict[str, Any]:
     try:
         with Image.open(BytesIO(file_data)) as img:
             metadata = {
-                'width': img.width,
-                'height': img.height,
-                'format': img.format,
-                'mode': img.mode,
-                'has_transparency': img.mode in ('RGBA', 'LA') or 'transparency' in img.info
+                "width": img.width,
+                "height": img.height,
+                "format": img.format,
+                "mode": img.mode,
+                "has_transparency": img.mode in ("RGBA", "LA")
+                or "transparency" in img.info,
             }
 
             # Extract EXIF data if available
-            if hasattr(img, '_getexif') and img._getexif() is not None:
+            if hasattr(img, "_getexif") and img._getexif() is not None:
                 exif_data = img._getexif()
                 if exif_data:
-                    metadata['has_exif'] = True
+                    metadata["has_exif"] = True
                     # Extract useful EXIF tags
                     for tag_id, value in exif_data.items():
                         if tag_id == 274:  # Orientation
-                            metadata['orientation'] = value
+                            metadata["orientation"] = value
                         elif tag_id == 306:  # DateTime
-                            metadata['datetime'] = str(value)
+                            metadata["datetime"] = str(value)
                         elif tag_id == 272:  # Model
-                            metadata['camera_model'] = str(value)
+                            metadata["camera_model"] = str(value)
 
             return metadata
 
@@ -178,12 +185,14 @@ def optimize_image_for_storage(file_data: bytes, max_size_mb: float = 5.0) -> by
         with Image.open(BytesIO(file_data)) as img:
             # Convert to RGB if necessary (Pillow's convert() returns
             # Image.Image rather than ImageFile, so reassign to a new name)
-            processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
+            processed: Image.Image = (
+                img.convert("RGB") if img.mode not in ("RGB", "L") else img
+            )
 
             # Try different quality settings
             for quality in [85, 75, 65, 55, 45]:
                 output = BytesIO()
-                processed.save(output, 'JPEG', quality=quality, optimize=True)
+                processed.save(output, "JPEG", quality=quality, optimize=True)
                 optimized_data = output.getvalue()
 
                 if len(optimized_data) <= max_size_bytes:
@@ -194,10 +203,12 @@ def optimize_image_for_storage(file_data: bytes, max_size_mb: float = 5.0) -> by
             new_width = int(processed.width * scale_factor)
             new_height = int(processed.height * scale_factor)
 
-            resized_img = processed.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            resized_img = processed.resize(
+                (new_width, new_height), Image.Resampling.LANCZOS
+            )
 
             output = BytesIO()
-            resized_img.save(output, 'JPEG', quality=75, optimize=True)
+            resized_img.save(output, "JPEG", quality=75, optimize=True)
             return output.getvalue()
 
     except Exception as e:
@@ -213,7 +224,16 @@ def is_image_file(filename: str) -> bool:
     Returns:
         True if filename appears to be an image
     """
-    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff', '.tif', '.svg'}
+    image_extensions = {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".svg",
+    }
     return Path(filename).suffix.lower() in image_extensions
 
 
@@ -227,11 +247,11 @@ def get_content_type_from_format(image_format: str) -> str:
         MIME content type
     """
     format_mapping = {
-        'JPEG': 'image/jpeg',
-        'PNG': 'image/png',
-        'WEBP': 'image/webp',
-        'BMP': 'image/bmp',
-        'TIFF': 'image/tiff',
-        'SVG': 'image/svg+xml'
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "WEBP": "image/webp",
+        "BMP": "image/bmp",
+        "TIFF": "image/tiff",
+        "SVG": "image/svg+xml",
     }
-    return format_mapping.get(image_format, 'image/jpeg')
+    return format_mapping.get(image_format, "image/jpeg")

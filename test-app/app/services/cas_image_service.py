@@ -52,8 +52,7 @@ class CasImageService:
         """
         # Use hash as cache key instead of attachment_id
         thumbnail_path = os.path.join(
-            self.app_settings.thumbnail_storage_path,
-            f"{content_hash}_{size}.jpg"
+            self.app_settings.thumbnail_storage_path, f"{content_hash}_{size}.jpg"
         )
 
         # Check if thumbnail already exists
@@ -71,18 +70,22 @@ class CasImageService:
             with Image.open(image_data) as img:
                 # Convert to RGB if necessary (Pillow's convert() returns
                 # Image.Image rather than ImageFile, so reassign to a new name)
-                processed: Image.Image = img.convert('RGB') if img.mode not in ('RGB', 'L') else img
+                processed: Image.Image = (
+                    img.convert("RGB") if img.mode not in ("RGB", "L") else img
+                )
 
                 # Create thumbnail maintaining aspect ratio
                 processed.thumbnail((size, size), Image.Resampling.LANCZOS)
 
                 # Save thumbnail to disk
-                processed.save(thumbnail_path, 'JPEG', quality=85, optimize=True)
+                processed.save(thumbnail_path, "JPEG", quality=85, optimize=True)
 
             return thumbnail_path
 
         except Exception as e:
-            raise InvalidOperationException("generate thumbnail from hash", str(e)) from e
+            raise InvalidOperationException(
+                "generate thumbnail from hash", str(e)
+            ) from e
 
     def convert_image_to_png(self, content: bytes) -> DocumentContentSchema | None:
         """Try to convert an image to PNG format.
@@ -101,18 +104,19 @@ class CasImageService:
             with Image.open(io.BytesIO(content)) as img:
                 # Convert to RGBA to handle transparency properly (Pillow's
                 # convert() returns Image.Image, so reassign to a new name)
-                processed: Image.Image = img.convert('RGBA') if img.mode not in ('RGBA', 'RGB') else img
+                processed: Image.Image = (
+                    img.convert("RGBA") if img.mode not in ("RGBA", "RGB") else img
+                )
 
                 # Create a new BytesIO object for PNG output
                 png_output = io.BytesIO()
 
                 # Save as PNG
-                processed.save(png_output, format='PNG')
+                processed.save(png_output, format="PNG")
                 png_output.seek(0)
 
                 return DocumentContentSchema(
-                    content=png_output.getvalue(),
-                    content_type='image/png'
+                    content=png_output.getvalue(), content_type="image/png"
                 )
 
         except Exception as e:

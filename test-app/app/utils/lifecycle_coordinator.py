@@ -30,6 +30,7 @@ class LifecycleEvent(StrEnum):
     SHUTDOWN = "shutdown"
     AFTER_SHUTDOWN = "after-shutdown"
 
+
 class LifecycleCoordinatorProtocol(ABC):
     """Protocol for lifecycle coordinator implementations."""
 
@@ -39,7 +40,9 @@ class LifecycleCoordinatorProtocol(ABC):
         pass
 
     @abstractmethod
-    def register_lifecycle_notification(self, callback: Callable[[LifecycleEvent], None]) -> None:
+    def register_lifecycle_notification(
+        self, callback: Callable[[LifecycleEvent], None]
+    ) -> None:
         """Register a callback to be notified on lifecycle events.
 
         Args:
@@ -48,7 +51,9 @@ class LifecycleCoordinatorProtocol(ABC):
         pass
 
     @abstractmethod
-    def unregister_lifecycle_notification(self, callback: Callable[[LifecycleEvent], None]) -> None:
+    def unregister_lifecycle_notification(
+        self, callback: Callable[[LifecycleEvent], None]
+    ) -> None:
         """Remove a previously registered lifecycle notification callback.
 
         Identity-based removal: removes at most one callback matching ``callback``
@@ -62,7 +67,9 @@ class LifecycleCoordinatorProtocol(ABC):
         pass
 
     @abstractmethod
-    def register_shutdown_waiter(self, name: str, handler: Callable[[float], bool]) -> None:
+    def register_shutdown_waiter(
+        self, name: str, handler: Callable[[float], bool]
+    ) -> None:
         """Register a handler that blocks until ready for shutdown.
 
         Args:
@@ -90,6 +97,7 @@ class LifecycleCoordinatorProtocol(ABC):
         """Fire the STARTUP lifecycle event to all registered callbacks."""
         pass
 
+
 class LifecycleCoordinator(LifecycleCoordinatorProtocol):
     """Coordinator for application lifecycle events and graceful shutdown."""
 
@@ -113,23 +121,33 @@ class LifecycleCoordinator(LifecycleCoordinatorProtocol):
         signal.signal(signal.SIGTERM, self._handle_sigterm)
         signal.signal(signal.SIGINT, self._handle_sigterm)
 
-    def register_lifecycle_notification(self, callback: Callable[[LifecycleEvent], None]) -> None:
+    def register_lifecycle_notification(
+        self, callback: Callable[[LifecycleEvent], None]
+    ) -> None:
         """Register a callback to be notified on lifecycle events."""
         with self._lifecycle_lock:
             self._lifecycle_notifications.append(callback)
-            logger.debug(f"Registered lifecycle notification: {getattr(callback, '__name__', repr(callback))}")
+            logger.debug(
+                f"Registered lifecycle notification: {getattr(callback, '__name__', repr(callback))}"
+            )
 
-    def unregister_lifecycle_notification(self, callback: Callable[[LifecycleEvent], None]) -> None:
+    def unregister_lifecycle_notification(
+        self, callback: Callable[[LifecycleEvent], None]
+    ) -> None:
         """Remove a previously registered lifecycle notification callback (idempotent)."""
         with self._lifecycle_lock:
             try:
                 self._lifecycle_notifications.remove(callback)
-                logger.debug(f"Unregistered lifecycle notification: {getattr(callback, '__name__', repr(callback))}")
+                logger.debug(
+                    f"Unregistered lifecycle notification: {getattr(callback, '__name__', repr(callback))}"
+                )
             except ValueError:
                 # Callback was not registered (or already removed); no-op.
                 pass
 
-    def register_shutdown_waiter(self, name: str, handler: Callable[[float], bool]) -> None:
+    def register_shutdown_waiter(
+        self, name: str, handler: Callable[[float], bool]
+    ) -> None:
         """Register a handler that blocks until ready for shutdown."""
         with self._lifecycle_lock:
             self._shutdown_waiters[name] = handler
@@ -198,7 +216,9 @@ class LifecycleCoordinator(LifecycleCoordinatorProtocol):
 
         # Phase 2: Wait for services to complete (blocking)
         # Release lock before waiting to avoid deadlocks
-        logger.info(f"Waiting for {len(self._shutdown_waiters)} services to complete (timeout: {self._graceful_shutdown_timeout}s)")
+        logger.info(
+            f"Waiting for {len(self._shutdown_waiters)} services to complete (timeout: {self._graceful_shutdown_timeout}s)"
+        )
 
         start_time = time.perf_counter()
         all_ready = True
@@ -213,7 +233,9 @@ class LifecycleCoordinator(LifecycleCoordinatorProtocol):
                 break
 
             try:
-                logger.info(f"Waiting for {name} to complete (remaining: {remaining:.1f}s)")
+                logger.info(
+                    f"Waiting for {name} to complete (remaining: {remaining:.1f}s)"
+                )
                 ready = waiter(remaining)
 
                 if not ready:
@@ -230,7 +252,9 @@ class LifecycleCoordinator(LifecycleCoordinatorProtocol):
         GRACEFUL_SHUTDOWN_DURATION_SECONDS.observe(total_duration)
 
         if not all_ready:
-            logger.error(f"Shutdown timeout exceeded after {total_duration:.1f}s, forcing shutdown")
+            logger.error(
+                f"Shutdown timeout exceeded after {total_duration:.1f}s, forcing shutdown"
+            )
 
         # Notify that we're actually shutting down now.
         self._raise_lifecycle_event(LifecycleEvent.SHUTDOWN)
@@ -251,4 +275,6 @@ class LifecycleCoordinator(LifecycleCoordinatorProtocol):
             try:
                 callback(event)
             except Exception as e:
-                logger.error(f"Error in lifecycle event notification {getattr(callback, '__name__', repr(callback))}: {e}")
+                logger.error(
+                    f"Error in lifecycle event notification {getattr(callback, '__name__', repr(callback))}: {e}"
+                )

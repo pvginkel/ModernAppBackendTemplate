@@ -48,7 +48,9 @@ class S3Service:
             logger.warning("Failed to ensure S3 bucket exists: %s", e)
 
         if self._health_service is not None:
-            self._health_service.register_check("s3", self.check_readiness, critical=True)
+            self._health_service.register_check(
+                "s3", self.check_readiness, critical=True
+            )
 
     def check_readiness(self) -> CheckResult:
         """Readiness check: the bucket is reachable. Errors raise and are reported."""
@@ -61,15 +63,17 @@ class S3Service:
         if self._s3_client is None:
             try:
                 self._s3_client = boto3.client(
-                    's3',
+                    "s3",
                     endpoint_url=self.settings.s3_endpoint_url,
                     aws_access_key_id=self.settings.s3_access_key_id,
                     aws_secret_access_key=self.settings.s3_secret_access_key,
                     region_name=self.settings.s3_region,
-                    use_ssl=self.settings.s3_use_ssl
+                    use_ssl=self.settings.s3_use_ssl,
                 )
             except NoCredentialsError as e:
-                raise InvalidOperationException("initialize S3 client", "credentials not configured") from e
+                raise InvalidOperationException(
+                    "initialize S3 client", "credentials not configured"
+                ) from e
         return self._s3_client
 
     def compute_hash(self, content: bytes) -> str:
@@ -95,7 +99,9 @@ class S3Service:
         content_hash = self.compute_hash(content)
         return f"cas/{content_hash}"
 
-    def upload_file(self, file_obj: BinaryIO, s3_key: str, content_type: str | None = None) -> bool:
+    def upload_file(
+        self, file_obj: BinaryIO, s3_key: str, content_type: str | None = None
+    ) -> bool:
         """Upload file to S3.
 
         Args:
@@ -144,16 +150,16 @@ class S3Service:
         try:
             file_obj = BytesIO()
             self.s3_client.download_fileobj(
-                self.settings.s3_bucket_name,
-                s3_key,
-                file_obj
+                self.settings.s3_bucket_name, s3_key, file_obj
             )
             file_obj.seek(0)
             return file_obj
 
         except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                raise InvalidOperationException("download file from S3", f"file not found: {s3_key}") from e
+            if e.response["Error"]["Code"] == "NoSuchKey":
+                raise InvalidOperationException(
+                    "download file from S3", f"file not found: {s3_key}"
+                ) from e
             raise InvalidOperationException("download file from S3", str(e)) from e
 
     def copy_file(self, source_s3_key: str, target_s3_key: str) -> bool:
@@ -171,20 +177,22 @@ class S3Service:
         """
         try:
             copy_source: CopySourceTypeDef = {
-                'Bucket': self.settings.s3_bucket_name,
-                'Key': source_s3_key
+                "Bucket": self.settings.s3_bucket_name,
+                "Key": source_s3_key,
             }
 
             self.s3_client.copy_object(
                 CopySource=copy_source,
                 Bucket=self.settings.s3_bucket_name,
-                Key=target_s3_key
+                Key=target_s3_key,
             )
             return True
 
         except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                raise InvalidOperationException("copy file in S3", f"source file not found: {source_s3_key}") from e
+            if e.response["Error"]["Code"] == "NoSuchKey":
+                raise InvalidOperationException(
+                    "copy file in S3", f"source file not found: {source_s3_key}"
+                ) from e
             raise InvalidOperationException("copy file in S3", str(e)) from e
 
     def delete_file(self, s3_key: str) -> bool:
@@ -201,8 +209,7 @@ class S3Service:
         """
         try:
             self.s3_client.delete_object(
-                Bucket=self.settings.s3_bucket_name,
-                Key=s3_key
+                Bucket=self.settings.s3_bucket_name, Key=s3_key
             )
             return True
 
@@ -219,14 +226,11 @@ class S3Service:
             True if file exists, False otherwise
         """
         try:
-            self.s3_client.head_object(
-                Bucket=self.settings.s3_bucket_name,
-                Key=s3_key
-            )
+            self.s3_client.head_object(Bucket=self.settings.s3_bucket_name, Key=s3_key)
             return True
 
         except ClientError as e:
-            if e.response['Error']['Code'] == '404':
+            if e.response["Error"]["Code"] == "404":
                 return False
             raise InvalidOperationException("check file existence in S3", str(e)) from e
 
@@ -244,20 +248,21 @@ class S3Service:
         """
         try:
             response = self.s3_client.head_object(
-                Bucket=self.settings.s3_bucket_name,
-                Key=s3_key
+                Bucket=self.settings.s3_bucket_name, Key=s3_key
             )
 
             return {
-                'content_length': response.get('ContentLength'),
-                'content_type': response.get('ContentType'),
-                'last_modified': response.get('LastModified'),
-                'etag': response.get('ETag', '').strip('"')
+                "content_length": response.get("ContentLength"),
+                "content_type": response.get("ContentType"),
+                "last_modified": response.get("LastModified"),
+                "etag": response.get("ETag", "").strip('"'),
             }
 
         except ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                raise InvalidOperationException("get file metadata from S3", f"file not found: {s3_key}") from e
+            if e.response["Error"]["Code"] == "404":
+                raise InvalidOperationException(
+                    "get file metadata from S3", f"file not found: {s3_key}"
+                ) from e
             raise InvalidOperationException("get file metadata from S3", str(e)) from e
 
     def list_objects(self, prefix: str) -> list[str]:
@@ -274,13 +279,13 @@ class S3Service:
         """
         try:
             keys: list[str] = []
-            paginator = self.s3_client.get_paginator('list_objects_v2')
+            paginator = self.s3_client.get_paginator("list_objects_v2")
             for page in paginator.paginate(
                 Bucket=self.settings.s3_bucket_name,
                 Prefix=prefix,
             ):
-                for obj in page.get('Contents', []):
-                    keys.append(obj['Key'])
+                for obj in page.get("Contents", []):
+                    keys.append(obj["Key"])
             return keys
 
         except ClientError as e:
@@ -329,7 +334,7 @@ class S3Service:
 
         except ClientError as e:
             # If bucket doesn't exist (404), create it
-            if e.response['Error']['Code'] == '404':
+            if e.response["Error"]["Code"] == "404":
                 try:
                     # Create bucket without location constraint for compatibility
                     self.s3_client.create_bucket(Bucket=self.settings.s3_bucket_name)
@@ -337,8 +342,10 @@ class S3Service:
                 except ClientError as create_error:
                     raise InvalidOperationException(
                         "create S3 bucket",
-                        f"failed to create bucket {self.settings.s3_bucket_name}: {create_error}"
+                        f"failed to create bucket {self.settings.s3_bucket_name}: {create_error}",
                     ) from create_error
             else:
                 # Other errors (permissions, etc.)
-                raise InvalidOperationException("check S3 bucket existence", str(e)) from e
+                raise InvalidOperationException(
+                    "check S3 bucket existence", str(e)
+                ) from e

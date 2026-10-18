@@ -10,7 +10,9 @@ from app.services.container import ServiceContainer
 from app.services.testing_service import TestingService
 from app.utils.spectree_config import api
 
-testing_content_bp = Blueprint("testing_content", __name__, url_prefix="/api/testing/content")
+testing_content_bp = Blueprint(
+    "testing_content", __name__, url_prefix="/api/testing/content"
+)
 
 
 @testing_content_bp.before_request
@@ -32,7 +34,9 @@ def generate_content_image(
     image_bytes = testing_service.create_fake_image(query.text)
 
     response = current_app.response_class(image_bytes, mimetype="image/png")
-    response.headers["Content-Disposition"] = "attachment; filename=testing-content-image.png"
+    response.headers["Content-Disposition"] = (
+        "attachment; filename=testing-content-image.png"
+    )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Content-Length"] = str(len(image_bytes))
@@ -66,7 +70,9 @@ def generate_content_html(
     html_doc = testing_service.render_html_fixture(query.title, include_banner=False)
     html_bytes = html_doc.encode("utf-8")
 
-    response = current_app.response_class(html_bytes, mimetype="text/html; charset=utf-8")
+    response = current_app.response_class(
+        html_bytes, mimetype="text/html; charset=utf-8"
+    )
     response.headers["Content-Disposition"] = "inline; filename=testing-content.html"
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -85,8 +91,12 @@ def generate_content_html_with_banner(
     html_doc = testing_service.render_html_fixture(query.title, include_banner=True)
     html_bytes = html_doc.encode("utf-8")
 
-    response = current_app.response_class(html_bytes, mimetype="text/html; charset=utf-8")
-    response.headers["Content-Disposition"] = "inline; filename=testing-content-banner.html"
+    response = current_app.response_class(
+        html_bytes, mimetype="text/html; charset=utf-8"
+    )
+    response.headers["Content-Disposition"] = (
+        "inline; filename=testing-content-banner.html"
+    )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Content-Length"] = str(len(html_bytes))

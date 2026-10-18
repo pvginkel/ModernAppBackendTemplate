@@ -42,7 +42,9 @@ class AppSettings(BaseModel):
         return dump_config_for_logging(self)
 
     @classmethod
-    def load(cls, env: "AppEnvironment | None" = None, flask_env: str = "development") -> "AppSettings":
+    def load(
+        cls, env: "AppEnvironment | None" = None, flask_env: str = "development"
+    ) -> "AppSettings":
         """Load app settings from environment variables."""
         if env is None:
             env = AppEnvironment()

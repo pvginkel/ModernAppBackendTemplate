@@ -4,7 +4,7 @@ import re
 from urllib.parse import quote
 
 # Compile regex for hash extraction once
-CAS_KEY_PATTERN = re.compile(r'^cas/([0-9a-f]{64})$')
+CAS_KEY_PATTERN = re.compile(r"^cas/([0-9a-f]{64})$")
 
 
 def build_cas_url(

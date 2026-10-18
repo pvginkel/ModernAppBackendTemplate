@@ -19,20 +19,26 @@ def list_items(
 ) -> Response:
     """List all items."""
     items = item_service.list_items()
-    return jsonify({
-        "items": [
-            {
-                "id": item.id,
-                "name": item.name,
-                "description": item.description,
-                "quantity": item.quantity,
-                "created_at": item.created_at.isoformat() if item.created_at else None,
-                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-            }
-            for item in items
-        ],
-        "total": len(items),
-    })
+    return jsonify(
+        {
+            "items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "description": item.description,
+                    "quantity": item.quantity,
+                    "created_at": item.created_at.isoformat()
+                    if item.created_at
+                    else None,
+                    "updated_at": item.updated_at.isoformat()
+                    if item.updated_at
+                    else None,
+                }
+                for item in items
+            ],
+            "total": len(items),
+        }
+    )
 
 
 @items_bp.route("", methods=["POST"])
@@ -48,14 +54,16 @@ def create_item(
         description=data.description,
         quantity=data.quantity,
     )
-    return jsonify({
-        "id": item.id,
-        "name": item.name,
-        "description": item.description,
-        "quantity": item.quantity,
-        "created_at": item.created_at.isoformat() if item.created_at else None,
-        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-    }), 201
+    return jsonify(
+        {
+            "id": item.id,
+            "name": item.name,
+            "description": item.description,
+            "quantity": item.quantity,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        }
+    ), 201
 
 
 @items_bp.route("/<int:item_id>", methods=["GET"])
@@ -66,14 +74,16 @@ def get_item(
 ) -> Response:
     """Get an item by ID."""
     item = item_service.get_item(item_id)
-    return jsonify({
-        "id": item.id,
-        "name": item.name,
-        "description": item.description,
-        "quantity": item.quantity,
-        "created_at": item.created_at.isoformat() if item.created_at else None,
-        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-    })
+    return jsonify(
+        {
+            "id": item.id,
+            "name": item.name,
+            "description": item.description,
+            "quantity": item.quantity,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        }
+    )
 
 
 @items_bp.route("/<int:item_id>", methods=["PATCH"])
@@ -87,14 +97,16 @@ def update_item(
     data = ItemUpdate.model_validate(request.get_json())
     update_fields = data.model_dump(exclude_unset=True)
     item = item_service.update_item(item_id, **update_fields)
-    return jsonify({
-        "id": item.id,
-        "name": item.name,
-        "description": item.description,
-        "quantity": item.quantity,
-        "created_at": item.created_at.isoformat() if item.created_at else None,
-        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-    })
+    return jsonify(
+        {
+            "id": item.id,
+            "name": item.name,
+            "description": item.description,
+            "quantity": item.quantity,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        }
+    )
 
 
 @items_bp.route("/<int:item_id>", methods=["DELETE"])

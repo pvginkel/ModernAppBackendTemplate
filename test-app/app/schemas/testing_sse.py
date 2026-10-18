@@ -80,7 +80,9 @@ class TaskEventRequestSchema(BaseModel):
         description="Task identifier for the event",
         examples=["task-xyz-456"],
     )
-    event_type: Literal["task_started", "progress_update", "task_completed", "task_failed"] = Field(
+    event_type: Literal[
+        "task_started", "progress_update", "task_completed", "task_failed"
+    ] = Field(
         ...,
         description="Type of task event to send",
         examples=["progress_update"],

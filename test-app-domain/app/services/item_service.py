@@ -23,7 +23,9 @@ class ItemService:
             raise RecordNotFoundException("Item", item_id)
         return item
 
-    def create_item(self, name: str, description: str | None = None, quantity: int = 0) -> Item:
+    def create_item(
+        self, name: str, description: str | None = None, quantity: int = 0
+    ) -> Item:
         """Create a new item."""
         item = Item(name=name, description=description, quantity=quantity)
         self.db_session.add(item)

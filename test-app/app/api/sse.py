@@ -72,7 +72,9 @@ def _authenticate_callback(secret_from_query: str | None, settings: Settings) ->
     return secret_from_query == expected_secret
 
 
-def _extract_token_from_headers(headers: dict[str, str], cookie_name: str) -> str | None:
+def _extract_token_from_headers(
+    headers: dict[str, str], cookie_name: str
+) -> str | None:
     """Extract access token from forwarded SSE Gateway headers.
 
     Checks Authorization header (Bearer token) first, then falls back
@@ -128,7 +130,9 @@ def _connection_identity(
     token = _extract_token_from_headers(headers, settings.oidc_cookie_name)
 
     try:
-        auth_context = resolve_auth_identity(token, auth_service, settings, testing_service)
+        auth_context = resolve_auth_identity(
+            token, auth_service, settings, testing_service
+        )
     except AuthenticationException as e:
         raise AuthenticationException(
             f"SSE connect {request_id} refused: {e.message}"
@@ -154,7 +158,9 @@ def _connection_identity(
 @sse_bp.route("/callback", methods=["POST"])
 @inject
 def handle_callback(
-    sse_connection_manager: SSEConnectionManager = Provide[ServiceContainer.sse_connection_manager],
+    sse_connection_manager: SSEConnectionManager = Provide[
+        ServiceContainer.sse_connection_manager
+    ],
     settings: Settings = Provide[ServiceContainer.config],
     testing_service: TestingService = Provide[ServiceContainer.testing_service],
     auth_service: AuthService = Provide[ServiceContainer.auth_service],
@@ -216,7 +222,9 @@ def handle_callback(
 
         # The colon is reserved in request IDs
         if ":" in request_id:
-            raise ValidationException(f"SSE connect request_id contains a colon: {request_id}")
+            raise ValidationException(
+                f"SSE connect request_id contains a colon: {request_id}"
+            )
 
         # Testing-mode single-shot forced refusal, consumed before the
         # identity check and before on_connect, so a forced refusal never
@@ -244,9 +252,7 @@ def handle_callback(
         # Register connection with SSEConnectionManager (observers will be
         # notified) only once every refusal is past
         sse_connection_manager.on_connect(
-            request_id,
-            connect_callback.token,
-            connect_callback.request.url
+            request_id, connect_callback.token, connect_callback.request.url
         )
 
         # Bind the accepted identity for subject-targeted delivery

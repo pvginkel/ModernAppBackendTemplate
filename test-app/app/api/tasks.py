@@ -45,7 +45,9 @@ def _caller_owns(task_info: TaskInfo, settings: Settings) -> bool:
     return task_info.subject is not None and task_info.subject == auth_context.subject
 
 
-def _find_caller_task(task_service: TaskService, task_id: str, settings: Settings) -> TaskInfo | None:
+def _find_caller_task(
+    task_service: TaskService, task_id: str, settings: Settings
+) -> TaskInfo | None:
     """Return the task, or None when it doesn't exist or the caller doesn't own it."""
     task_info = task_service.get_task_status(task_id)
     if task_info is None:
@@ -73,7 +75,9 @@ def get_task_status(
 
 
 @tasks_bp.route("/<task_id>/cancel", methods=["POST"])
-@api.validate(resp=SpectreeResponse(HTTP_200=TaskActionResponse, HTTP_404=ApiErrorResponseSchema))
+@api.validate(
+    resp=SpectreeResponse(HTTP_200=TaskActionResponse, HTTP_404=ApiErrorResponseSchema)
+)
 @inject
 def cancel_task(
     task_id: str,
@@ -92,7 +96,9 @@ def cancel_task(
 
 
 @tasks_bp.route("/<task_id>", methods=["DELETE"])
-@api.validate(resp=SpectreeResponse(HTTP_200=TaskActionResponse, HTTP_404=ApiErrorResponseSchema))
+@api.validate(
+    resp=SpectreeResponse(HTTP_200=TaskActionResponse, HTTP_404=ApiErrorResponseSchema)
+)
 @inject
 def remove_task(
     task_id: str,

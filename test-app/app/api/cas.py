@@ -17,7 +17,7 @@ cas_bp = Blueprint("cas", __name__, url_prefix="/api/cas")
 logger = logging.getLogger(__name__)
 
 # Compile regex for hash validation once
-HASH_PATTERN = re.compile(r'^[0-9a-f]{64}$')
+HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 @cas_bp.route("/<hash_value>", methods=["GET"])
@@ -25,7 +25,7 @@ HASH_PATTERN = re.compile(r'^[0-9a-f]{64}$')
 def get_cas_content(
     hash_value: str,
     s3_service: S3Service = Provide[ServiceContainer.s3_service],
-    cas_image_service: CasImageService = Provide[ServiceContainer.cas_image_service]
+    cas_image_service: CasImageService = Provide[ServiceContainer.cas_image_service],
 ) -> Any:
     """Serve content from CAS storage with immutable caching.
 
@@ -45,10 +45,10 @@ def get_cas_content(
         raise BadRequest("Invalid hash format (expected 64-char hex)")
 
     # Parse query params
-    content_type = request.args.get('content_type')
-    disposition = request.args.get('disposition')
-    filename = request.args.get('filename')
-    thumbnail_size_str = request.args.get('thumbnail')
+    content_type = request.args.get("content_type")
+    disposition = request.args.get("disposition")
+    filename = request.args.get("filename")
+    thumbnail_size_str = request.args.get("thumbnail")
 
     # Validate parameter combinations
     if content_type and thumbnail_size_str:
@@ -67,18 +67,18 @@ def get_cas_content(
 
         # Generate or retrieve cached thumbnail
         try:
-            thumbnail_path = cas_image_service.get_thumbnail_for_hash(hash_value, thumbnail_size)
+            thumbnail_path = cas_image_service.get_thumbnail_for_hash(
+                hash_value, thumbnail_size
+            )
         except Exception as e:
-            logger.error(f"Failed to generate thumbnail for hash {hash_value}: {str(e)}")
+            logger.error(
+                f"Failed to generate thumbnail for hash {hash_value}: {str(e)}"
+            )
             raise InternalServerError("Failed to generate thumbnail") from e
 
         # Serve thumbnail with immutable cache headers
-        response = send_file(
-            thumbnail_path,
-            mimetype='image/jpeg',
-            as_attachment=False
-        )
-        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        response = send_file(thumbnail_path, mimetype="image/jpeg", as_attachment=False)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
     # Handle direct content request
@@ -94,18 +94,20 @@ def get_cas_content(
     # Default to application/octet-stream if content_type not specified
     response = send_file(
         file_data,
-        mimetype=content_type or 'application/octet-stream',
-        as_attachment=(disposition == 'attachment')
+        mimetype=content_type or "application/octet-stream",
+        as_attachment=(disposition == "attachment"),
     )
-    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
 
     # Build Content-Disposition header only if filename or disposition explicitly set
     if filename and disposition:
-        response.headers['Content-Disposition'] = f'{disposition}; filename="{filename}"'
+        response.headers["Content-Disposition"] = (
+            f'{disposition}; filename="{filename}"'
+        )
     elif filename:
         # Default to inline if filename set but disposition not
-        response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
+        response.headers["Content-Disposition"] = f'inline; filename="{filename}"'
     elif disposition:
-        response.headers['Content-Disposition'] = disposition
+        response.headers["Content-Disposition"] = disposition
 
     return response

@@ -18,7 +18,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 {% if use_s3 %}
 # CAS thumbnails are a local cache: every file can be regenerated from the S3
 # original, so the default lives in the OS temp dir and needs no volume.
-_DEFAULT_THUMBNAIL_STORAGE_PATH = Path(tempfile.gettempdir()) / "{{ project_name }}-thumbnails"
+_DEFAULT_THUMBNAIL_STORAGE_PATH = Path(
+    tempfile.gettempdir(),
+    "{{ project_name }}-thumbnails",
+)
 {% endif %}
 
 
@@ -55,7 +58,9 @@ class AppSettings(BaseModel):
         return dump_config_for_logging(self)
 
     @classmethod
-    def load(cls, env: "AppEnvironment | None" = None, flask_env: str = "development") -> "AppSettings":
+    def load(
+        cls, env: "AppEnvironment | None" = None, flask_env: str = "development"
+    ) -> "AppSettings":
         """Load app settings from environment variables."""
         if env is None:
             env = AppEnvironment()

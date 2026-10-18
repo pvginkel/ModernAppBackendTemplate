@@ -27,7 +27,7 @@ class FrontendVersionService:
         self,
         settings: Settings,
         lifecycle_coordinator: LifecycleCoordinatorProtocol,
-        sse_connection_manager: SSEConnectionManager
+        sse_connection_manager: SSEConnectionManager,
     ):
         """Initialize version service and register observer callback."""
         self.settings = settings
@@ -52,7 +52,9 @@ class FrontendVersionService:
         self.sse_connection_manager.register_on_disconnect(self._on_disconnect_callback)
 
         # Register for lifecycle notifications
-        lifecycle_coordinator.register_lifecycle_notification(self._handle_lifecycle_event)
+        lifecycle_coordinator.register_lifecycle_notification(
+            self._handle_lifecycle_event
+        )
 
     def _fetch_frontend_version(self) -> dict[str, Any] | None:
         """Fetch frontend version from configured URL.
@@ -100,7 +102,9 @@ class FrontendVersionService:
         elif self.settings.stage.is_local():
             # A local stage has no deployed version.json to fetch; a queued
             # (pending) version is the only one it sends.
-            logger.debug(f"No version sent in a local stage for request_id {request_id}")
+            logger.debug(
+                f"No version sent in a local stage for request_id {request_id}"
+            )
         else:
             threading.Thread(
                 target=self._send_fetched_version,
@@ -132,7 +136,9 @@ class FrontendVersionService:
                 )
                 return
             if not self.sse_connection_manager.has_connection(request_id):
-                logger.debug(f"Fetched version not sent: request_id {request_id} disconnected")
+                logger.debug(
+                    f"Fetched version not sent: request_id {request_id} disconnected"
+                )
                 return
             logger.debug(f"Sending fetched version for request_id {request_id}")
             self._send_version(request_id, fetched)
@@ -143,13 +149,12 @@ class FrontendVersionService:
             Target.connection(request_id),
             version_payload,
             event_name="version",
-            service_type="version"
+            service_type="version",
         )
 
         if not success:
             logger.error(
-                "Failed to send version event",
-                extra={"request_id": request_id}
+                "Failed to send version event", extra={"request_id": request_id}
             )
 
     def _on_disconnect_callback(self, request_id: str) -> None:
@@ -158,10 +163,7 @@ class FrontendVersionService:
             self._pending_version.pop(request_id, None)
 
     def queue_version_event(
-        self,
-        request_id: str,
-        version: str,
-        changelog: str | None = None
+        self, request_id: str, version: str, changelog: str | None = None
     ) -> bool:
         """Queue a version notification for broadcast and store as pending.
 
@@ -177,7 +179,7 @@ class FrontendVersionService:
             if self._is_shutting_down:
                 logger.debug(
                     "Ignoring deployment trigger during shutdown",
-                    extra={"request_id": request_id}
+                    extra={"request_id": request_id},
                 )
                 return False
 
@@ -192,7 +194,7 @@ class FrontendVersionService:
                 BROADCAST_TARGET,  # the version concerns every client
                 event_payload,
                 event_name="version",
-                service_type="version"
+                service_type="version",
             )
 
             # Store as pending version (kept until overwritten or the connection goes)
@@ -202,7 +204,7 @@ class FrontendVersionService:
 
         logger.debug(
             "Broadcast version event and stored as pending",
-            extra={"request_id": request_id, "version": version}
+            extra={"request_id": request_id, "version": version},
         )
         return True
 

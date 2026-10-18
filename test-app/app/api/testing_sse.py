@@ -108,7 +108,9 @@ _EVENT_TYPE_MAP = {
 
 
 @testing_sse_bp.route("/tasks/start", methods=["POST"])
-@api.validate(json=TaskStartRequestSchema, resp=SpectreeResponse(HTTP_200=TaskStartResponseSchema))
+@api.validate(
+    json=TaskStartRequestSchema, resp=SpectreeResponse(HTTP_200=TaskStartResponseSchema)
+)
 @inject
 def start_test_task(
     task_service: TaskService = Provide[ServiceContainer.task_service],
@@ -214,7 +216,9 @@ def send_task_event(
 
 
 @testing_sse_bp.route("/sse/force-callback-error", methods=["POST"])
-@api.validate(query=ForceSSECallbackErrorQuerySchema, resp=SpectreeResponse(HTTP_204=None))
+@api.validate(
+    query=ForceSSECallbackErrorQuerySchema, resp=SpectreeResponse(HTTP_204=None)
+)
 @inject
 def force_sse_callback_error(
     testing_service: TestingService = Provide[ServiceContainer.testing_service],

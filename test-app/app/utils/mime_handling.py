@@ -18,10 +18,14 @@ def detect_mime_type(content: bytes, http_content_type: str | None = None) -> st
     # If server provides a Content-Type header for common web content, trust it
     if http_content_type:
         # Extract just the MIME type (strip charset and other parameters)
-        header_mime = http_content_type.split(';')[0].strip().lower()
+        header_mime = http_content_type.split(";")[0].strip().lower()
 
         # Trust the server for HTML, PDF, and images
-        if header_mime == 'text/html' or header_mime == 'application/pdf' or header_mime.startswith('image/'):
+        if (
+            header_mime == "text/html"
+            or header_mime == "application/pdf"
+            or header_mime.startswith("image/")
+        ):
             return header_mime
 
     # Fall back to magic detection for everything else

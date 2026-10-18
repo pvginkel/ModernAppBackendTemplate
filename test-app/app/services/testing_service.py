@@ -196,7 +196,9 @@ class TestingService:
     def render_html_fixture(self, title: str, include_banner: bool = False) -> str:
         """Render deterministic HTML content for Playwright fixtures."""
         safe_title = html.escape(title)
-        preview_image_path = f"/api/testing/content/image?text={self.PREVIEW_IMAGE_QUERY}"
+        preview_image_path = (
+            f"/api/testing/content/image?text={self.PREVIEW_IMAGE_QUERY}"
+        )
 
         banner_markup = ""
         if include_banner:

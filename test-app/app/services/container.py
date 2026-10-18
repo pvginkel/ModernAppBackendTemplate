@@ -40,9 +40,7 @@ class ServiceContainer(containers.DeclarativeContainer):
     config = providers.Dependency(instance_of=Settings)
     app_config = providers.Dependency(instance_of=AppSettings)
     session_maker = providers.Dependency(instance_of=sessionmaker)
-    db_session = providers.ContextLocalSingleton(
-        session_maker.provided.call()
-    )
+    db_session = providers.ContextLocalSingleton(session_maker.provided.call())
 
     # Lifecycle coordinator - manages startup and graceful shutdown
     lifecycle_coordinator = providers.Singleton(
@@ -58,7 +56,9 @@ class ServiceContainer(containers.DeclarativeContainer):
     )
 
     # S3 storage services
-    s3_service = providers.Factory(S3Service, settings=config, health_service=health_service)
+    s3_service = providers.Factory(
+        S3Service, settings=config, health_service=health_service
+    )
     register_for_background_startup(lambda c: c.s3_service().startup())
 
     cas_image_service = providers.Factory(
@@ -73,7 +73,9 @@ class ServiceContainer(containers.DeclarativeContainer):
         TempFileManager,
         lifecycle_coordinator=lifecycle_coordinator,
     )
-    register_for_background_startup(lambda c: c.temp_file_manager().start_cleanup_thread())
+    register_for_background_startup(
+        lambda c: c.temp_file_manager().start_cleanup_thread()
+    )
 
     # Metrics service - background thread for Prometheus metrics
     metrics_service = providers.Singleton(
