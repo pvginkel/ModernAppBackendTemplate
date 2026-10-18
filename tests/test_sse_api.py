@@ -1,10 +1,22 @@
-"""Tests for SSE Gateway callback API endpoint."""
+"""Tests for SSE Gateway callback API endpoint.
+
+Every refusal answers with the error envelope; the gateway reads only the
+status code (tests/integration/test_sse_gateway_rejection.py).
+"""
 
 from unittest.mock import Mock
 
 import pytest
+from dependency_injector import providers
 
 from app.services.sse_connection_manager import SSEConnectionManager
+
+_DISCONNECT = {
+    "action": "disconnect",
+    "token": "t",
+    "reason": "client_closed",
+    "request": {"url": "/api/sse/stream?request_id=abc123", "headers": {}},
+}
 
 
 class TestSSECallbackAPI:
@@ -147,7 +159,9 @@ class TestSSECallbackAPI:
 
             assert response.status_code == 400
             json_data = response.get_json()
-            assert "error" in json_data
+            assert json_data["code"] == "VALIDATION_FAILED"
+            assert "has no request_id" in json_data["error"]
+            mock_sse_connection_manager.on_connect.assert_not_called()
 
     def test_invalid_json_returns_400(self, client, app, mock_sse_connection_manager):
         """Test invalid JSON payload returns 400."""
@@ -161,6 +175,7 @@ class TestSSECallbackAPI:
             )
 
             assert response.status_code == 400
+            assert response.get_json()["error"] == "Invalid JSON"
 
     def test_missing_json_body_returns_400(
         self, client, app, mock_sse_connection_manager
@@ -173,8 +188,20 @@ class TestSSECallbackAPI:
 
             assert response.status_code == 400
             json_data = response.get_json()
-            assert "error" in json_data
-            assert "Missing JSON body" in json_data["error"]
+            assert json_data["code"] == "VALIDATION_FAILED"
+            assert json_data["error"] == "SSE Gateway callback has no JSON body"
+
+    def test_body_not_an_object_returns_400(self, client, app, mock_sse_connection_manager):
+        """A JSON body that isn't an object is refused, not a 500."""
+        with app.app_context():
+            app.container.sse_connection_manager.override(mock_sse_connection_manager)
+
+            response = client.post("/api/sse/callback", json=["connect"])
+
+            assert response.status_code == 400
+            json_data = response.get_json()
+            assert json_data["code"] == "VALIDATION_FAILED"
+            assert json_data["error"] == "SSE Gateway callback body is not a JSON object"
 
     def test_unknown_action_returns_400(self, client, app, mock_sse_connection_manager):
         """Test unknown action returns 400."""
@@ -194,8 +221,8 @@ class TestSSECallbackAPI:
 
             assert response.status_code == 400
             json_data = response.get_json()
-            assert "error" in json_data
-            assert "Unknown action" in json_data["error"]
+            assert json_data["code"] == "VALIDATION_FAILED"
+            assert json_data["error"] == "Unknown SSE Gateway callback action: unknown_action"
 
     def test_validation_error_returns_400(
         self, client, app, mock_sse_connection_manager
@@ -216,9 +243,8 @@ class TestSSECallbackAPI:
 
             assert response.status_code == 400
             json_data = response.get_json()
-            assert "error" in json_data
-            assert "Invalid payload" in json_data["error"]
-            assert "details" in json_data
+            assert json_data["error"] == "Validation failed"
+            assert {"message": "Field required", "field": "token"} in json_data["details"]["errors"]
 
     def test_request_id_with_colon_returns_400(
         self, client, app, mock_sse_connection_manager
@@ -240,4 +266,44 @@ class TestSSECallbackAPI:
 
             assert response.status_code == 400
             json_data = response.get_json()
-            assert "error" in json_data
+            assert json_data["code"] == "VALIDATION_FAILED"
+            assert json_data["error"] == "SSE connect request_id contains a colon: invalid:id"
+            mock_sse_connection_manager.on_connect.assert_not_called()
+
+    @pytest.mark.parametrize("secret", [None, "wrong-secret"])
+    def test_production_refuses_a_wrong_secret_with_401(
+        self, client, app, mock_sse_connection_manager, secret
+    ):
+        """In production the callback needs the shared secret: 401 and the envelope."""
+        production = app.container.config().model_copy(
+            update={"flask_env": "production", "sse_callback_secret": "my-secret-key"}
+        )
+        url = "/api/sse/callback" if secret is None else f"/api/sse/callback?secret={secret}"
+
+        with app.app_context():
+            app.container.config.override(providers.Object(production))
+            app.container.sse_connection_manager.override(mock_sse_connection_manager)
+
+            response = client.post(url, json=_DISCONNECT)
+
+            assert response.status_code == 401
+            json_data = response.get_json()
+            assert json_data["code"] == "AUTHENTICATION_REQUIRED"
+            assert json_data["error"] == "SSE Gateway callback secret is missing or wrong"
+            mock_sse_connection_manager.on_disconnect.assert_not_called()
+
+    def test_production_accepts_the_right_secret(
+        self, client, app, mock_sse_connection_manager
+    ):
+        production = app.container.config().model_copy(
+            update={"flask_env": "production", "sse_callback_secret": "my-secret-key"}
+        )
+
+        with app.app_context():
+            app.container.config.override(providers.Object(production))
+            app.container.sse_connection_manager.override(mock_sse_connection_manager)
+
+            response = client.post("/api/sse/callback?secret=my-secret-key", json=_DISCONNECT)
+
+            assert response.status_code == 200
+            mock_sse_connection_manager.on_disconnect.assert_called_once_with("t")

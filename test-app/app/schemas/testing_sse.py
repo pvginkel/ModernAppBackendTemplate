@@ -105,13 +105,6 @@ class TaskEventResponseSchema(BaseModel):
     )
 
 
-class TestErrorResponseSchema(BaseModel):
-    """Error response schema for testing endpoints."""
-
-    error: str = Field(..., description="Error message")
-    status: str = Field(..., description="Error status code", examples=["not_found"])
-
-
 def _coerce_status_int(value: object) -> object:
     """Coerce a numeric query-string value to int before Literal validation.
 

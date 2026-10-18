@@ -36,6 +36,9 @@ class TestTaskAPI:
             data = response.get_json()
             assert data["task_id"] == task_id
             assert data["status"] == TaskStatus.COMPLETED.value
+            # The documented TaskInfo, so timestamps are ISO 8601
+            assert data["start_time"] == "2023-01-01T00:00:00"
+            assert data["end_time"] == "2023-01-01T00:01:00"
 
     def test_get_task_status_not_found(self, client, app, task_service_mock):
         task_service_mock.get_task_status.return_value = None
@@ -53,8 +56,10 @@ class TestTaskAPI:
             app.container.task_service.override(task_service_mock)
             response = client.post("/api/tasks/test-task-id/cancel")
             assert response.status_code == 200
-            data = response.get_json()
-            assert data["success"] is True
+            assert response.get_json() == {
+                "success": True,
+                "message": "Task cancellation requested",
+            }
 
     def test_cancel_task_not_found(self, client, app, task_service_mock):
         task_service_mock.cancel_task.return_value = False
@@ -72,8 +77,10 @@ class TestTaskAPI:
             app.container.task_service.override(task_service_mock)
             response = client.delete("/api/tasks/test-task-id")
             assert response.status_code == 200
-            data = response.get_json()
-            assert data["success"] is True
+            assert response.get_json() == {
+                "success": True,
+                "message": "Task removed from registry",
+            }
 
     def test_remove_task_not_found(self, client, app, task_service_mock):
         task_service_mock.remove_completed_task.return_value = False

@@ -52,6 +52,12 @@ class TaskInfo(BaseModel):
     error: str | None = Field(None, description="Error message if task failed")
 
 
+class TaskActionResponse(BaseModel):
+    """Response when a task is cancelled or removed."""
+    success: bool = Field(description="Whether the action was taken; an action that can't be is a 404")
+    message: str = Field(description="What was done")
+
+
 class TaskStartResponse(BaseModel):
     """Response when starting a new task."""
     task_id: str = Field(description="Unique task identifier")

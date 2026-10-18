@@ -1,8 +1,8 @@
 """The SSE Gateway connect callback admits only a caller the API would serve.
 
 A refused connect answers 401 (no or invalid token) or 403 (a caller the API
-refuses) before the connection is registered, so a refused stream never
-receives an event. The gateway forwards the browser's headers in the callback
+refuses), with the error envelope, before the connection is registered, so a
+refused stream never receives an event. The gateway forwards the browser's headers in the callback
 payload, so the tests put the token there, not in the test client's cookie
 jar. Each test gets a fresh connection manager.
 """
@@ -69,9 +69,17 @@ class _Callback:
         return request_id in self.manager._local_admin_ids
 
     def assert_refused(self, response: Any, status: int, request_id: str) -> None:
+        """Refused with the status and the error envelope, and never registered.
+
+        The gateway reads only the status code (and its reason phrase); the
+        body is the envelope every error handler answers with.
+        """
         assert response.status_code == status
-        error = "Unauthorized" if status == 401 else "Forbidden"
-        assert response.get_json() == {"error": error}
+        body = response.get_json()
+        code = "AUTHENTICATION_REQUIRED" if status == 401 else "AUTHORIZATION_FAILED"
+        assert body["code"] == code
+        assert f"SSE connect {request_id} refused" in body["error"]
+        assert "message" in body["details"]
         self.on_connect.assert_not_called()
         assert not self.manager.has_connection(request_id)
 
