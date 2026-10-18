@@ -4,3 +4,5 @@ __pycache__
 /tmp
 /MagicMock
 /.pytest_cache
+# The use_database=false, use_s3=false test-app (regen.sh): built and checked, not tracked.
+/test-app-no-storage/

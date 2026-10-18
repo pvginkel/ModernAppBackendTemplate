@@ -31,18 +31,21 @@ backend/
 ├── copier.yml          # Copier configuration and feature flags
 ├── template/           # Copier template source (Jinja2 files)
 ├── test-app/           # Generated test application (DO NOT edit directly)
+├── test-app-no-storage/ # The same with use_database=false, use_s3=false, no domain (generated, gitignored)
 ├── test-app-domain/    # Hand-written domain files copied into test-app after generation
 ├── tests/              # Mother project test suite (infrastructure tests)
 ├── pyproject.toml      # Dev dependencies (copier, pinned), uv project
 ├── uv.lock
-├── regen.sh            # Regeneration script
+├── regen.sh            # Regeneration script (both test-apps)
 └── .env.test           # Test environment overrides
 ```
 
 ## Critical Rules
 
 ### 1. Never Edit test-app Directly
-`test-app/` is generated from the template. All changes go in `template/`, then regenerate.
+`test-app/` and `test-app-no-storage/` are generated from the template. All changes go in `template/`, then regenerate.
+
+`test-app-no-storage` renders `use_database=false` and `use_s3=false`, as DHCPApp, ZigbeeControl and FieldnotesApp run (`use_oidc` and `use_sse` on, as in all three). It gets no `test-app-domain` files (the Items domain needs the database) and no `.env.test` (those apps have none), so it is a fresh app's render, and its suite (`uv run pytest tests/`) is the template's own. The mother suite runs on `test-app` only. `kc project test` and `kc project lint` check both; `test-app-no-storage` is gitignored, and the root's `test-app-no-storage` wraps it.
 
 ### 2. test-app-domain Contains App-Specific Files
 `test-app-domain/` has hand-written domain files (Item model, CRUD API, migration, tests) that get copied into `test-app/` after Copier generation.
@@ -50,7 +53,8 @@ backend/
 ### 3. Always Regenerate After Template Changes
 ```bash
 cd /work/ModernAppTemplate/backend
-bash regen.sh
+bash regen.sh                       # both test-apps
+bash regen.sh test-app-no-storage   # or only the named ones
 ```
 
 ### 4. Run Both Test Suites
