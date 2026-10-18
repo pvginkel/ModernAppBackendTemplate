@@ -90,6 +90,27 @@ _skip_if_exists:
   - "Dockerfile"
   - ".dockerignore"
   - "vulture_whitelist.py"
+  # The same files again under backend/, where every app keeps this template.
+  # In a monorepo, `copier update` (9.11.3) applies its diff with `git apply
+  # --exclude <entry>` at the git toplevel, where the paths carry the backend/
+  # prefix: the entries above never match there, and the update merges the
+  # template's changes into every app-owned file the app has edited (MAT-16).
+  # These twins match. The entries above still do the rest: skip the existing
+  # file when the template renders. Keep the two lists in step.
+  - "backend/app/startup.py"
+  - "backend/app/services/container.py"
+  - "backend/app/exceptions.py"
+  - "backend/app/consts.py"
+  - "backend/app/app_config.py"
+  - "backend/app/models/__init__.py"
+  - "backend/pyproject.toml"
+  - "backend/README.md"
+  - "backend/tests/conftest.py"
+  - "backend/tests/test_smoke.py"
+  - "backend/.env.example"
+  - "backend/Dockerfile"
+  - "backend/.dockerignore"
+  - "backend/vulture_whitelist.py"
 
 # ── Feature-flagged file exclusion ────────────────────────────────────
 
