@@ -1,9 +1,12 @@
 """Tests for lifecycle coordinator."""
 
+import logging
 import signal
 import threading
 import time
 from unittest.mock import MagicMock
+
+import pytest
 
 from app.utils.lifecycle_coordinator import LifecycleCoordinator, LifecycleEvent
 from tests.testing_utils import TestLifecycleCoordinator
@@ -20,7 +23,7 @@ class TestProductionLifecycleCoordinator:
             events_received.append(event)
 
         coordinator.register_lifecycle_notification(notification_callback)
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
 
         assert len(events_received) == 3
         assert events_received[0] == LifecycleEvent.PREPARE_SHUTDOWN
@@ -36,7 +39,7 @@ class TestProductionLifecycleCoordinator:
         coordinator.register_lifecycle_notification(callback2)
         coordinator.register_lifecycle_notification(callback3)
 
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
 
         assert callback1.call_count == 3
         assert callback2.call_count == 3
@@ -71,7 +74,7 @@ class TestProductionLifecycleCoordinator:
         coordinator.register_shutdown_waiter("Service2", waiter2)
 
         start_time = time.perf_counter()
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
         end_time = time.perf_counter()
 
         assert len(waiter_calls) == 2
@@ -94,7 +97,7 @@ class TestProductionLifecycleCoordinator:
         coordinator.register_lifecycle_notification(check_state_callback)
 
         thread = threading.Thread(
-            target=lambda: coordinator._handle_sigterm(signal.SIGTERM, None)
+            target=lambda: coordinator._handle_sigterm(signal.SIGTERM, None).join()
         )
         thread.start()
         thread.join(timeout=5)
@@ -117,7 +120,7 @@ class TestProductionLifecycleCoordinator:
         coordinator.register_lifecycle_notification(bad_callback)
         coordinator.register_lifecycle_notification(good_callback)
 
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
 
         assert len(good_callback.calls) == 3
         assert good_callback.calls[0] == LifecycleEvent.PREPARE_SHUTDOWN
@@ -147,7 +150,7 @@ class TestProductionLifecycleCoordinator:
         coordinator.register_shutdown_waiter("BadService", bad_waiter)
         coordinator.register_shutdown_waiter("GoodService", good_waiter)
 
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
         assert good_waiter_called.is_set()
         assert after_shutdown_attempted
 
@@ -205,7 +208,7 @@ class TestProductionLifecycleCoordinator:
 
         coordinator.register_lifecycle_notification(callback)
         coordinator.fire_startup()
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
 
         assert len(events_received) == 4
         assert events_received[0] == LifecycleEvent.STARTUP
@@ -362,7 +365,7 @@ class TestLifecycleIntegrationScenarios:
         coordinator.register_lifecycle_notification(service2_notification)
         coordinator.register_shutdown_waiter("Service2", service2_waiter)
 
-        coordinator._handle_sigterm(signal.SIGTERM, None)
+        coordinator._handle_sigterm(signal.SIGTERM, None).join()
 
         assert "Service1:prepare-shutdown" in event_sequence
         assert "Service2:prepare-shutdown" in event_sequence
@@ -376,3 +379,67 @@ class TestLifecycleIntegrationScenarios:
             i for i, event in enumerate(event_sequence) if "waiter_complete" in event
         ]
         assert max(prepare_indices) < min(waiter_indices)
+
+
+class TestSignalHandler:
+    """The handler starts the shutdown on a thread of its own, and neither logs nor waits.
+
+    A handler that writes to stderr while the interrupted main thread is in
+    the middle of its own write fails with "reentrant call inside
+    <_io.BufferedWriter name='<stderr>'>".
+    """
+
+    def test_handler_returns_before_the_shutdown_and_logs_nothing(
+        self, caplog: pytest.LogCaptureFixture
+    ):
+        caplog.set_level(logging.DEBUG, logger="app.utils.lifecycle_coordinator")
+        coordinator = LifecycleCoordinator(graceful_shutdown_timeout=5)
+        release = threading.Event()
+        events: list[LifecycleEvent] = []
+        coordinator.register_lifecycle_notification(events.append)
+        coordinator.register_shutdown_waiter("Blocked", lambda timeout: release.wait(timeout))
+        caplog.clear()
+
+        thread = coordinator._handle_sigterm(signal.SIGTERM, None)
+
+        # Back before the waiter is released: the shutdown runs on the thread
+        assert thread.is_alive()
+        assert not thread.daemon
+        release.set()
+        thread.join(timeout=5)
+
+        assert events == [
+            LifecycleEvent.PREPARE_SHUTDOWN,
+            LifecycleEvent.SHUTDOWN,
+            LifecycleEvent.AFTER_SHUTDOWN,
+        ]
+        here = threading.current_thread().name
+        assert [r.threadName for r in caplog.records if r.threadName == here] == []
+        received = [r for r in caplog.records if r.getMessage().startswith("Received signal")]
+        assert [r.threadName for r in received] == [thread.name]
+
+    def test_second_signal_during_the_shutdown_is_ignored(self):
+        coordinator = LifecycleCoordinator(graceful_shutdown_timeout=5)
+        release = threading.Event()
+        prepared = threading.Event()
+        events: list[LifecycleEvent] = []
+
+        def record(event: LifecycleEvent) -> None:
+            events.append(event)
+            if event == LifecycleEvent.PREPARE_SHUTDOWN:
+                prepared.set()
+
+        coordinator.register_lifecycle_notification(record)
+        coordinator.register_shutdown_waiter("Blocked", lambda timeout: release.wait(timeout))
+
+        first = coordinator._handle_sigterm(signal.SIGTERM, None)
+        assert prepared.wait(timeout=5)
+        coordinator._handle_sigterm(signal.SIGINT, None).join(timeout=5)
+        release.set()
+        first.join(timeout=5)
+
+        assert events == [
+            LifecycleEvent.PREPARE_SHUTDOWN,
+            LifecycleEvent.SHUTDOWN,
+            LifecycleEvent.AFTER_SHUTDOWN,
+        ]

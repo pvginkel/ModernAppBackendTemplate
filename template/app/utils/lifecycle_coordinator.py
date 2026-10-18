@@ -150,8 +150,31 @@ class LifecycleCoordinator(LifecycleCoordinatorProtocol):
 
         self._raise_lifecycle_event(LifecycleEvent.STARTUP)
 
-    def _handle_sigterm(self, signum: int, frame: object) -> None:
-        """SIGTERM signal handler that performs complete graceful shutdown."""
+    def _handle_sigterm(self, signum: int, frame: object) -> threading.Thread:
+        """SIGTERM and SIGINT handler: run the graceful shutdown on a thread.
+
+        A signal handler runs on the main thread between two bytecodes, which
+        can be in the middle of that thread's own write to stderr. Logging
+        from the handler then fails with ``RuntimeError: reentrant call inside
+        <_io.BufferedWriter name='<stderr>'>``, and waiting in it for another
+        thread that logs can deadlock on the same buffer. So the handler only
+        starts the thread, which logs and runs ``shutdown()``, and returns at
+        once. The thread is not a daemon, so a process whose main thread
+        returns at ``AFTER_SHUTDOWN`` (``run.py`` in production) still runs
+        every callback to the end.
+
+        Returns:
+            The shutdown thread, for tests to join
+        """
+        thread = threading.Thread(
+            target=self._shutdown_on_signal,
+            args=(signum,),
+            name=f"lifecycle-shutdown-{signum}",
+        )
+        thread.start()
+        return thread
+
+    def _shutdown_on_signal(self, signum: int) -> None:
         logger.info(f"Received signal {signum}, initiating graceful shutdown")
 
         self.shutdown()
