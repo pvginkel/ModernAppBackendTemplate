@@ -1,14 +1,13 @@
 """Tests for the testing SSE endpoints' answers (app/api/testing_sse.py).
 
 Errors raise and answer with the error envelope: an unknown connection is a
-404, a gateway that doesn't take the event a 502. The gateway is a fresh
-connection manager whose HTTP sends are patched, as in
-tests/test_sse_connection_manager.py; the integration tests run these
-endpoints against a real gateway.
+404, a connection that doesn't take the event a 502. The manager is a fresh
+one, its connections made with ``on_connect`` as a stream makes them; the
+integration tests run these endpoints against real streams.
 """
 
 from collections.abc import Generator
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 from dependency_injector import providers
@@ -18,6 +17,7 @@ from flask.testing import FlaskClient
 from app.schemas.task_schema import TaskStartResponse, TaskStatus
 from app.services.sse_connection_manager import SSEConnectionManager
 from app.services.task_service import TaskService
+from tests.testing_utils import StubLifecycleCoordinator
 
 _TASK_EVENT = {
     "request_id": "req-1",
@@ -30,18 +30,16 @@ _TASK_EVENT = {
 @pytest.fixture
 def manager(app: Flask) -> Generator[SSEConnectionManager]:
     """A fresh connection manager in the app; session_app_isolation undoes the override."""
-    manager = SSEConnectionManager(gateway_url="http://sse-gateway.invalid")
+    manager = SSEConnectionManager(StubLifecycleCoordinator(), queue_max_frames=1)
     app.container.sse_connection_manager.override(providers.Object(manager))
     yield manager
 
 
 class TestTaskEvent:
     def test_delivered(self, client: FlaskClient, manager: SSEConnectionManager):
-        manager.on_connect("req-1", "tok-1", "/api/sse/stream?request_id=req-1")
+        connection = manager.on_connect("req-1", "alice")
 
-        with patch("app.services.sse_connection_manager.requests.post") as post:
-            post.return_value = Mock(status_code=200)
-            response = client.post("/api/testing/sse/task-event", json=_TASK_EVENT)
+        response = client.post("/api/testing/sse/task-event", json=_TASK_EVENT)
 
         assert response.status_code == 200
         assert response.get_json() == {
@@ -50,7 +48,9 @@ class TestTaskEvent:
             "event_type": "progress_update",
             "delivered": True,
         }
-        assert post.call_args.kwargs["json"]["token"] == "tok-1"
+        frame = connection.next_frame(0)
+        assert frame is not None
+        assert frame.startswith('data: {"type":"task_event","payload":')
 
     def test_unknown_connection_is_404(
         self, client: FlaskClient, manager: SSEConnectionManager
@@ -62,19 +62,19 @@ class TestTaskEvent:
         assert body["code"] == "RECORD_NOT_FOUND"
         assert body["error"] == "SSE connection req-1 was not found"
 
-    def test_gateway_failure_is_502(self, client: FlaskClient, manager: SSEConnectionManager):
-        manager.on_connect("req-1", "tok-1", "/api/sse/stream?request_id=req-1")
+    def test_a_full_queue_is_502(self, client: FlaskClient, manager: SSEConnectionManager):
+        """The queue holds one frame; a second event finds it full and closes the connection."""
+        manager.on_connect("req-1", "alice")
+        assert client.post("/api/testing/sse/task-event", json=_TASK_EVENT).status_code == 200
 
-        with patch("app.services.sse_connection_manager.requests.post") as post:
-            post.return_value = Mock(status_code=500, text="boom")
-            response = client.post("/api/testing/sse/task-event", json=_TASK_EVENT)
+        response = client.post("/api/testing/sse/task-event", json=_TASK_EVENT)
 
         assert response.status_code == 502
         body = response.get_json()
         assert body["code"] == "EXTERNAL_SERVICE_ERROR"
         assert body["error"] == (
             "Cannot send the task event to SSE connection req-1 because external "
-            "service failed: the SSE Gateway did not deliver it"
+            "service failed: the connection did not take it"
         )
 
     def test_invalid_event_type_is_400(self, client: FlaskClient, manager: SSEConnectionManager):

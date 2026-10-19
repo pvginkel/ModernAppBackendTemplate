@@ -276,7 +276,6 @@ class TestSensitiveMarks:
         "oidc_client_secret",
         "s3_access_key_id",
         "s3_secret_access_key",
-        "sse_callback_secret",
     }
 
     def test_every_secret_is_marked(self):
@@ -307,14 +306,13 @@ class TestDumpForLogging:
             drain_auth_key="drain-key",
             oidc_client_secret="client-secret",
             s3_secret_access_key="s3-secret",
-            sse_callback_secret="sse-secret",
         )
         dump = settings.dump_for_logging()
 
         for name in ("secret_key", "drain_auth_key", "oidc_client_secret",
-                     "s3_secret_access_key", "sse_callback_secret"):
+                     "s3_secret_access_key"):
             assert dump[name] == "***"
-        for secret in ("super-secret-key", "drain-key", "client-secret", "s3-secret", "sse-secret"):
+        for secret in ("super-secret-key", "drain-key", "client-secret", "s3-secret"):
             assert not any(secret in value for value in dump.values())
 
     def test_database_url_shows_everything_but_the_password(self):

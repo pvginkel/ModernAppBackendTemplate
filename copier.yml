@@ -48,11 +48,6 @@ frontend_port:
   default: 3000
   help: "Frontend dev server port (used in CORS_ORIGINS, BASEURL, FRONTEND_VERSION_URL defaults)"
 
-sse_gateway_port:
-  type: int
-  default: 3002
-  help: "SSE Gateway port (SSE_GATEWAY_URL default)"
-
 use_database:
   type: bool
   default: true
@@ -71,7 +66,7 @@ use_s3:
 use_sse:
   type: bool
   default: false
-  help: "Include Server-Sent Events via SSE Gateway"
+  help: "Include Server-Sent Events (the backend serves the browser's stream)"
 
 # ── Files generated once, never overwritten ───────────────────────────
 
@@ -151,7 +146,7 @@ _exclude:
   - "{% if not use_s3 %}app/schemas/testing_content.py{% endif %}"
   - "{% if not use_s3 %}app/assets{% endif %}"
 
-  # SSE (sse_connection_manager.py and sse_gateway_schema.py always included — TaskService depends on them)
+  # SSE (sse_connection_manager.py always included — TaskService depends on it)
   - "{% if not use_sse %}app/api/sse.py{% endif %}"
   - "{% if not use_sse %}app/api/testing_logs.py{% endif %}"
   - "{% if not use_sse %}app/api/testing_sse.py{% endif %}"

@@ -9,17 +9,16 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 from app.config import Settings
-from app.services.health_service import HealthService
+from app.services.health_service import CheckResult, CheckStatus, HealthService
 from app.services.s3_service import S3Service
-from app.services.sse_connection_manager import SSEConnectionManager
 
 
 @pytest.fixture(autouse=True)
 def fresh_readiness(app: Flask, monkeypatch: pytest.MonkeyPatch) -> Generator[HealthService]:
     """The session app's health service, holding only create_app()'s check.
 
-    A check another test registered (say, by building the container's SSE
-    connection manager) is set aside, checks this test registers are dropped
+    A check another test registered (say, by starting the container's S3
+    service) is set aside, checks this test registers are dropped
     at teardown, and the cache is cleared both ways.
     """
     health_service = app.container.health_service()
@@ -32,11 +31,11 @@ def fresh_readiness(app: Flask, monkeypatch: pytest.MonkeyPatch) -> Generator[He
 
 
 @pytest.fixture
-def sse_gateway_check(app: Flask, fresh_readiness: HealthService) -> SSEConnectionManager:
-    """A connection manager that registered its gateway check on the session app."""
-    return SSEConnectionManager(
-        gateway_url="http://sse-gateway.invalid", http_timeout=0.5, health_service=fresh_readiness
-    )
+def non_critical_check(fresh_readiness: HealthService) -> MagicMock:
+    """A non-critical check on the session app, answering what the test sets."""
+    check = MagicMock(return_value=CheckResult(CheckStatus.OK))
+    fresh_readiness.register_check("example", check, critical=False)
+    return check
 
 
 class TestReadyz:
@@ -106,48 +105,46 @@ class TestReadyz:
         assert client.get("/health/readyz").status_code == 200
 
 
-class TestSSEGatewayCheck:
-    """The SSE gateway's check is reported but not critical."""
+class TestNonCriticalCheck:
+    """A non-critical check is reported, and its failure only degrades readiness."""
 
-    @pytest.mark.usefixtures("sse_gateway_check")
-    def test_gateway_ready(self, client: FlaskClient):
-        with patch("requests.get", return_value=MagicMock(status_code=200)):
-            response = client.get("/health/readyz")
+    @pytest.mark.usefixtures("non_critical_check")
+    def test_ok(self, client: FlaskClient):
+        response = client.get("/health/readyz")
 
         assert response.status_code == 200
         assert response.json["status"] == "ok"
-        assert response.json["checks"]["sse_gateway"] == {"status": "ok", "critical": False}
+        assert response.json["checks"]["example"] == {"status": "ok", "critical": False}
 
-    @pytest.mark.usefixtures("sse_gateway_check")
-    def test_gateway_unreachable_degrades(self, client: FlaskClient):
-        with patch("requests.get", side_effect=ConnectionError("Connection refused")):
-            response = client.get("/health/readyz")
+    def test_raising_degrades(self, client: FlaskClient, non_critical_check: MagicMock):
+        non_critical_check.side_effect = ConnectionError("Connection refused")
+
+        response = client.get("/health/readyz")
 
         assert response.status_code == 200
         assert response.json["status"] == "degraded"
         assert response.json["ready"] is True
-        assert response.json["checks"]["sse_gateway"] == {
+        assert response.json["checks"]["example"] == {
             "status": "error", "critical": False, "detail": "Connection refused",
         }
 
-    @pytest.mark.usefixtures("sse_gateway_check")
-    def test_gateway_not_ready_degrades(self, client: FlaskClient):
-        with patch("requests.get", return_value=MagicMock(status_code=503)):
-            response = client.get("/health/readyz")
+    def test_error_degrades(self, client: FlaskClient, non_critical_check: MagicMock):
+        non_critical_check.return_value = CheckResult(CheckStatus.ERROR, "answered 503")
+
+        response = client.get("/health/readyz")
 
         assert response.status_code == 200
         assert response.json["status"] == "degraded"
-        assert response.json["checks"]["sse_gateway"]["detail"] == "gateway readyz answered 503"
+        assert response.json["checks"]["example"]["detail"] == "answered 503"
 
-    @pytest.mark.usefixtures("sse_gateway_check")
-    def test_critical_failure_wins(self, client: FlaskClient):
-        with patch("requests.get", side_effect=ConnectionError("Connection refused")), \
-             patch("app.database.check_db_connection", return_value=False):
+    def test_critical_failure_wins(self, client: FlaskClient, non_critical_check: MagicMock):
+        non_critical_check.side_effect = ConnectionError("Connection refused")
+        with patch("app.database.check_db_connection", return_value=False):
             response = client.get("/health/readyz")
 
         assert response.status_code == 503
         assert response.json["status"] == "not_ready"
-        assert set(response.json["checks"]) == {"database", "sse_gateway"}
+        assert set(response.json["checks"]) == {"database", "example"}
 
 
 class TestS3Check:

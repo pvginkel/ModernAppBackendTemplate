@@ -291,13 +291,10 @@ class Environment(BaseSettings):
         default=5,
         description="SSE heartbeat interval in seconds (5 for development, 30 for production)",
     )
-    SSE_GATEWAY_URL: str = Field(
-        default="http://localhost:3002",
-        description="SSE Gateway base URL for internal send endpoint",
-    )
-    SSE_CALLBACK_SECRET: str = Field(
-        default="",
-        description="Shared secret for authenticating SSE Gateway callbacks (required in production)",
+    SSE_QUEUE_MAX_FRAMES: int = Field(
+        default=1000,
+        gt=0,
+        description="Events an SSE connection queues before it counts as stalled and is closed",
     )
 
 
@@ -382,8 +379,7 @@ class Settings(BaseModel):
 
     frontend_version_url: str = "http://localhost:3000/version.json"
     sse_heartbeat_interval: int = 5  # Resolved: 30 for production via load()
-    sse_gateway_url: str = "http://localhost:3002"
-    sse_callback_secret: Annotated[str, Sensitive] = ""
+    sse_queue_max_frames: int = 1000
 
     @field_validator("stage", mode="before")
     @classmethod
@@ -566,8 +562,7 @@ class Settings(BaseModel):
             # use_sse
             frontend_version_url=env.FRONTEND_VERSION_URL,
             sse_heartbeat_interval=sse_heartbeat_interval,
-            sse_gateway_url=env.SSE_GATEWAY_URL,
-            sse_callback_secret=env.SSE_CALLBACK_SECRET,
+            sse_queue_max_frames=env.SSE_QUEUE_MAX_FRAMES,
         )
 
 

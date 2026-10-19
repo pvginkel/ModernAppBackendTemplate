@@ -2,7 +2,7 @@
 
 import threading
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import requests
@@ -83,7 +83,7 @@ class TestVersionOnConnect:
         )
 
     def test_connect_does_not_wait_for_the_fetch(self, monkeypatch: pytest.MonkeyPatch):
-        """The fetch runs off the gateway's connect callback (MAT-26)."""
+        """The fetch runs off the stream's connect (MAT-26)."""
         service, manager = _service("prd")
         sent = _signal_on_send(manager)
         fetching = threading.Event()
@@ -217,44 +217,40 @@ class TestPendingVersion:
 
     def test_queue_connect_disconnect_through_the_manager(self):
         """End to end on a real manager: sent on connect, gone after the disconnect."""
-        manager = SSEConnectionManager(gateway_url="http://gateway:3000")
+        manager = SSEConnectionManager(StubLifecycleCoordinator())
         service = FrontendVersionService(
             settings=Settings(stage="local-tst"),
             lifecycle_coordinator=StubLifecycleCoordinator(),
             sse_connection_manager=manager,
         )
 
-        with patch("app.services.sse_connection_manager.requests.post") as post:
-            post.return_value = MagicMock(status_code=200)
-            service.queue_version_event("req-1", "v2")
-            manager.on_connect("req-1", "token-1", "/api/sse/stream?request_id=req-1")
+        service.queue_version_event("req-1", "v2")
+        connection = manager.on_connect("req-1", "alice")
 
-            sent = [call.kwargs["json"] for call in post.call_args_list]
-            assert [body["token"] for body in sent] == ["token-1"]
-            assert '"v2"' in sent[0]["event"]["data"]
+        assert connection.next_frame(0) == (
+            'data: {"type":"version","payload":{"version": "v2"}}\n\n'
+        )
 
-            manager.on_disconnect("token-1")
+        manager.on_disconnect(connection)
 
         assert service._pending_version == {}
 
-    def test_dropped_when_the_gateway_has_lost_the_connection(self):
-        """A send the gateway answers 404 drops the connection, and its pending version."""
-        manager = SSEConnectionManager(gateway_url="http://gateway:3000")
+    def test_dropped_when_the_connection_stalls(self):
+        """A full queue closes the connection, and drops its pending version."""
+        manager = SSEConnectionManager(StubLifecycleCoordinator(), queue_max_frames=1)
         service = FrontendVersionService(
             settings=Settings(stage="local-tst"),
             lifecycle_coordinator=StubLifecycleCoordinator(),
             sse_connection_manager=manager,
         )
 
-        with patch("app.services.sse_connection_manager.requests.post") as post:
-            post.return_value = MagicMock(status_code=200)
-            service.queue_version_event("req-1", "v2")
-            manager.on_connect("req-1", "token-1", "/api/sse/stream?request_id=req-1")
-            assert service._pending_version == {"req-1": {"version": "v2"}}
+        service.queue_version_event("req-1", "v2")
+        manager.on_connect("req-1", "alice")
+        assert service._pending_version == {"req-1": {"version": "v2"}}
 
-            post.return_value = MagicMock(status_code=404)
-            manager.send_event(Target.connection("req-1"), {}, event_name="e", service_type="task")
+        manager.send_event(Target.connection("req-1"), {}, event_name="e", service_type="task")
 
+        assert not manager.has_connection("req-1")
         assert service._pending_version == {}
 
     def test_shutdown_clears_pending_versions(self):

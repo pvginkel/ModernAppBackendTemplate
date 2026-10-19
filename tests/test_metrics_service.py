@@ -113,14 +113,16 @@ class TestDecentralizedMetricsExist:
 
     def test_sse_connection_manager_metrics(self):
         from app.services.sse_connection_manager import (
-            SSE_GATEWAY_ACTIVE_CONNECTIONS,
-            SSE_GATEWAY_CONNECTIONS_TOTAL,
-            SSE_GATEWAY_EVENTS_SENT_TOTAL,
+            SSE_ACTIVE_CONNECTIONS,
+            SSE_CONNECTIONS_TOTAL,
+            SSE_EVENTS_SENT_TOTAL,
+            SSE_IDENTITY_BINDING_TOTAL,
         )
 
-        assert SSE_GATEWAY_CONNECTIONS_TOTAL is not None
-        assert SSE_GATEWAY_EVENTS_SENT_TOTAL is not None
-        assert SSE_GATEWAY_ACTIVE_CONNECTIONS is not None
+        assert SSE_CONNECTIONS_TOTAL is not None
+        assert SSE_EVENTS_SENT_TOTAL is not None
+        assert SSE_ACTIVE_CONNECTIONS is not None
+        assert SSE_IDENTITY_BINDING_TOTAL is not None
 
     def test_lifecycle_coordinator_metrics(self):
         from app.utils.lifecycle_coordinator import (
