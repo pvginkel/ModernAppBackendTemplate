@@ -12,7 +12,7 @@ Run from inside test-app: cd test-app && uv run pytest ../tests/ -v
 import socket
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import patch
 
@@ -106,73 +106,3 @@ def sse_server(run_databases: RunDatabases) -> Generator[tuple[str, Any]]:
         version_mock.stop()
         _dispose_app(app)
         run_databases.drop(database_url)
-
-
-@pytest.fixture
-def background_task_runner() -> (
-    Generator[Callable[[Callable[[], Any]], Any]]
-):
-    """Provide a helper to run background tasks concurrently with SSE tests."""
-    threads: list[threading.Thread] = []
-
-    def run_in_background(func: Callable[[], Any]) -> threading.Thread:
-        thread = threading.Thread(target=func, daemon=False)
-        threads.append(thread)
-        thread.start()
-        return thread
-
-    yield run_in_background
-
-    for thread in threads:
-        thread.join(timeout=5.0)
-
-
-@pytest.fixture
-def sse_client_factory(sse_server: tuple[str, Any]):
-    """Factory for creating SSE client instances for testing."""
-    from tests.integration.sse_client_helper import SSEClient
-
-    server_url, _ = sse_server
-
-    def create_client(endpoint: str, strict: bool = True) -> "SSEClient":
-        url = f"{server_url}{endpoint}"
-        return SSEClient(url, strict=strict)
-
-    return create_client
-
-
-@pytest.fixture(scope="session")
-def sse_gateway_server(
-    sse_server: tuple[str, Any],
-) -> Generator[str]:
-    """Start SSE Gateway subprocess for integration tests.
-
-    Returns the base URL for the gateway (e.g., http://localhost:3001).
-    """
-    from tests.integration.sse_gateway_helper import SSEGatewayProcess
-
-    server_url, app = sse_server
-
-    gateway_port = _find_free_port()
-
-    callback_url = f"{server_url}/api/sse/callback?secret=test-secret"
-
-    gateway = SSEGatewayProcess(
-        callback_url=callback_url,
-        port=gateway_port,
-        startup_timeout=10.0,
-        health_check_interval=0.5,
-        shutdown_timeout=5.0,
-    )
-
-    try:
-        gateway.start()
-        gateway_url = gateway.get_base_url()
-
-        sse_connection_manager = app.container.sse_connection_manager()
-        sse_connection_manager.gateway_url = gateway_url
-
-        yield gateway_url
-    finally:
-        gateway.print_logs()
-        gateway.stop()

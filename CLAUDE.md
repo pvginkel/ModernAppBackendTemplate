@@ -64,11 +64,10 @@ uv run pytest ../tests/ -v      # Mother project tests (infrastructure)
 uv run pytest tests/ -v          # Domain tests (Items CRUD)
 ```
 
-Both suites need PostgreSQL, and the mother suite needs two more things from outside this repo:
+Both suites need two things from outside this repo:
 
 - **PostgreSQL on `localhost:5432`** — the server the suites create their databases on, user and password `postgres`. The KubeCoder environment provides it as the `postgres` sidecar; `TEST_DATABASE_ADMIN_URL` points the suites elsewhere.
 - **S3 on `localhost:9000`** — `.env.test` points there with `s3storage` credentials. The KubeCoder environment provides it as the `s3storage` service, a RustFS sidecar (see the parent repo's `.kubecoder/config.yaml`).
-- **The SSE Gateway** — the `ssegateway` npm package, resolved from the frontend template's `test-app/node_modules` (`../frontend/test-app`). Run the frontend `regen.sh` once first, or set `SSE_GATEWAY_NODE_DIR` to any directory whose `node_modules` holds it.
 
 ### 5. PostgreSQL for Testing
 The suites run on PostgreSQL; nothing in pytest uses SQLite. `template/tests/conftest_infrastructure.py.jinja` builds one template database per run with the Alembic revisions, in production's locale (ICU `und`, `C`), and clones it:
@@ -78,7 +77,7 @@ The suites run on PostgreSQL; nothing in pytest uses SQLite. `template/tests/con
 
 The autouse `session_app_isolation` gives each test the session app's DI wiring back and undoes provider overrides a test leaves behind. What services keep in memory lives for the run, so a test that changes such state must undo it (`monkeypatch` does).
 
-The mother suite runs on the same fixtures: `tests/conftest_infrastructure.py` is a symlink to `test-app/tests/conftest_infrastructure.py`, so it needs a regenerated `test-app/`, and `tests/conftest.py` adds only the SSE integration fixtures.
+The mother suite runs on the same fixtures: `tests/conftest_infrastructure.py` is a symlink to `test-app/tests/conftest_infrastructure.py`, so it needs a regenerated `test-app/`, and `tests/conftest.py` adds only the SSE integration fixtures. The integration tests run the stream on Flask's dev server, and `tests/integration/test_sse_waitress.py` on Waitress, configured as `run.py` serves production.
 
 ### 6. Minimize Jinja Usage
 - Prefer plain Python files with separate files per feature over Jinja conditionals
@@ -111,7 +110,7 @@ Infrastructure code. See `docs/copier_approach.md` in the parent repo for the fu
 | `use_database` | SQLAlchemy, Alembic, migrations, pool diagnostics |
 | `use_oidc` | OIDC authentication (BFF pattern with JWT cookies) |
 | `use_s3` | S3 storage, CAS endpoints, image processing |
-| `use_sse` | Server-Sent Events via SSE Gateway |
+| `use_sse` | Server-Sent Events, streamed by the backend itself (`GET /api/sse/stream`) |
 
 ## Hook Contract
 
