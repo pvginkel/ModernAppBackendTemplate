@@ -21,7 +21,9 @@ from flask import Flask
 from flask.testing import FlaskClient
 from werkzeug.test import TestResponse
 
+from app.exceptions import AuthenticationException
 from app.services.auth_service import AuthService
+from app.services.oidc_client_service import TokenResponse
 from app.services.sse_connection_manager import (
     LOCAL_ADMIN_TARGET,
     SSEConnection,
@@ -268,6 +270,61 @@ class TestWithOidc:
         token = generate_test_jwt(subject="local-user", roles=["editor"])
 
         assert oidc.bound("req-lu", token) == ("local-user", False)
+
+    def test_an_expired_token_is_refreshed_and_accepted(
+        self, oidc: _Streams, generate_test_jwt: Any
+    ) -> None:
+        """The gate refreshes it: the stream is accepted at once, as the new identity.
+
+        The new cookies go out on the stream's response, so the browser needs
+        no session probe and no reopen.
+        """
+        fresh = TokenResponse(
+            access_token=generate_test_jwt(subject="refreshed-user", roles=["editor"]),
+            id_token=None,
+            refresh_token=None,
+            token_type="Bearer",
+            expires_in=300,
+        )
+        oidc.client.set_cookie("refresh_token", "old-refresh")
+
+        with (
+            patch.object(
+                oidc.app.container.oidc_client_service(),
+                "refresh_access_token",
+                return_value=fresh,
+            ) as refresh,
+            oidc.open("req-refresh", generate_test_jwt(roles=["editor"], expired=True)) as stream,
+        ):
+            assert stream.frame() == READY
+            info = oidc.manager.get_connection_info("req-refresh")
+            set_cookies = stream.response.headers.getlist("Set-Cookie")
+
+        refresh.assert_called_once_with("old-refresh")
+        assert info is not None
+        assert (info.subject, info.local_admin) == ("refreshed-user", False)
+        assert any(c.startswith(f"access_token={fresh.access_token};") for c in set_cookies)
+
+    def test_an_expired_token_whose_refresh_fails_is_refused_401(
+        self, oidc: _Streams, generate_test_jwt: Any
+    ) -> None:
+        """Refused in-stream, and the gate clears the auth cookies on the response."""
+        oidc.client.set_cookie("refresh_token", "spent-refresh")
+
+        with (
+            patch.object(
+                oidc.app.container.oidc_client_service(),
+                "refresh_access_token",
+                side_effect=AuthenticationException("Refresh failed"),
+            ),
+            oidc.open("req-spent", generate_test_jwt(roles=["editor"], expired=True)) as stream,
+        ):
+            assert stream.frame() == _REJECTED[401]
+            stream.assert_ended()
+            set_cookies = stream.response.headers.getlist("Set-Cookie")
+
+        oidc.on_connect.assert_not_called()
+        assert any(c.startswith("access_token=;") and "Max-Age=0" in c for c in set_cookies)
 
 
 class TestReadRole:

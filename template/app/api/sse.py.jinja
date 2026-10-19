@@ -48,10 +48,9 @@ from app.services.testing_service import TestingService
 from app.utils.auth import (
     LOCAL_USER_SUBJECT,
     check_authorization,
-    extract_token_from_request,
+    get_auth_context,
     no_role_check,
     public,
-    resolve_auth_identity,
 )
 {% endif %}
 from app.utils.sse_utils import create_sse_response
@@ -105,38 +104,33 @@ def _rejected_stream(status: int) -> Generator[str]:
 {% if use_oidc %}
 
 def _connection_identity(
-    request_id: str,
-    auth_service: AuthService,
-    testing_service: TestingService,
-    settings: Settings,
+    request_id: str, auth_service: AuthService, settings: Settings
 ) -> _AcceptedIdentity:
-    """Resolve and check the identity a stream is for.
+    """Check the identity the API's gate resolved for the stream.
 
-    The API's rule: ``resolve_auth_identity`` on the access token cookie (an
-    ``EventSource`` sends no headers) for a test session, the local admin
-    with OIDC off, or the validated JWT; then the role check a GET gets,
-    which the local admin skips.
+    The route is ``@public``, so the gate ran tolerant: it resolved the
+    caller as ``resolve_auth_identity`` does, from the access token cookie
+    (an ``EventSource`` sends no headers), for a test session, the local
+    admin with OIDC off, or the validated JWT. When the access token had
+    expired and a refresh cookie came with it, the gate refreshed the tokens
+    and sets the new cookies on this response, so the stream is accepted at
+    once. A caller it could not authenticate has no auth context. ``@no_role_check`` keeps the gate from answering a
+    role refusal itself; the role check a GET gets is done here, so that it
+    answers in-stream, and the local admin skips it.
 
     Returns:
         The identity of the accepted connection
 
     Raises:
-        AuthenticationException: The token is missing or invalid (401)
+        AuthenticationException: The token is missing or invalid, or the
+            refresh failed (401)
         AuthorizationException: The API would refuse the caller (403)
     """
-    token = extract_token_from_request(settings, include_header=False)
-
-    try:
-        auth_context = resolve_auth_identity(
-            token, auth_service, settings, testing_service
-        )
-    except AuthenticationException as e:
-        raise AuthenticationException(
-            f"SSE connect {request_id} refused: {e.message}"
-        ) from e
-
+    auth_context = get_auth_context()
     if auth_context is None:
-        raise AuthenticationException(f"SSE connect {request_id} refused: no token")
+        raise AuthenticationException(
+            f"SSE connect {request_id} refused: not authenticated"
+        )
 
     if not settings.oidc_enabled and auth_context.subject == LOCAL_USER_SUBJECT:
         return _AcceptedIdentity(auth_context.subject, local_admin=True)
@@ -192,7 +186,7 @@ def _accept(
             )
 
 {% if use_oidc %}
-    return _connection_identity(request_id, auth_service, testing_service, settings)
+    return _connection_identity(request_id, auth_service, settings)
 {% else %}
     return _AcceptedIdentity(LOCAL_USER_SUBJECT, local_admin=True)
 {% endif %}
@@ -230,8 +224,9 @@ def _stream(
 
 @sse_bp.route("/stream", methods=["GET"])
 {% if use_oidc %}
-# Public, so the OIDC gate never answers in place of the route: the route
-# checks the caller itself, and answers a refusal in-stream
+# Public and without the gate's role check, so the OIDC gate never answers in
+# place of the route: it resolves the caller (refreshing an expired token),
+# and the route checks it and answers a refusal in-stream
 @public
 @no_role_check
 {% endif %}
